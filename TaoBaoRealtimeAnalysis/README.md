@@ -36,13 +36,13 @@
 |project.py|数据准备、限速回放、SQL 生成、结果对账|
 |dashboard.py / dashboard.html|实时读取结果或导出离线看板|
 |sql/|本次实际执行 SQL|
-|scripts/run_demo.sh|101 上完整重跑入口|
+|scripts/run_demo.sh|完整处理任务入口|
 |tests/|时区边界、数据质量、重复记录等测试|
 |reports/|实际验证结果与看板|
-|docs/DEPLOYMENT.md|部署、重启和资源限制|
+|docs/CODE_WALKTHROUGH.md|从数据准备到结果展示的完整实现与逐段代码解析|
 |docs/ANALYSIS.md|指标解释与样本分析|
 
-依赖安装：`python -m pip install -r requirements.txt`。测试：`python -m unittest discover -s tests -v`。运行步骤见 [部署文档](docs/DEPLOYMENT.md)。
+依赖安装：`python -m pip install -r requirements.txt`。测试：`python -m unittest discover -s tests -v`。完整实现见 [项目代码解析](docs/CODE_WALKTHROUGH.md)。
 
 ## 指标口径
 
@@ -54,7 +54,7 @@
 
 项目是历史数据回放实验，不是淘宝线上数据接入。单 Kafka 节点、单 TaskManager，无高可用。默认有界验证不宣称生产级 exactly-once；新 run 是新的独立实验。持续流的全局 distinct 状态会增长，大数据运行需要状态后端、checkpoint、生命周期和容量设计。扩大数据量之前先评估这些限制。
 
-复现参考已注明；本目录代码为本次重新编写，不包含第三方数据、安装包、密钥或凭据。
+复现参考已注明；本目录为项目实现代码，不包含第三方数据、安装包、密钥或凭据。
 
 ## 已验证结果（2026-10-26）
 
@@ -63,4 +63,4 @@
 - 六项单元测试通过；迟到实验验证 5 秒/20 分钟水位线分别保留 3/4 条窗口事件。
 - [分析报告](docs/ANALYSIS.md) · [对账 JSON](reports/result.json) · [迟到实验](reports/late_experiment.json)
 - [离线看板 HTML](reports/dashboard.html)：下载后用浏览器打开，GitHub 文件预览不会执行看板。
-- 已部署环境看板：`http://192.168.121.134:8090`（虚拟机需启动，仅本机私网可达）。
+- 已部署环境看板：`http://192.168.121.134:8090`（本机私网地址）。
