@@ -1,0 +1,343 @@
+{
+  "jid": "5b7dad0d5786e5f1038b7aaa72dd046b",
+  "name": "insert-into_default_catalog.default_database.overall,default_catalog.default_database.windows,default_catalog.default_database.hours,default_catalog.default_database.categories,default_catalog.default_database.cumulative",
+  "isStoppable": false,
+  "state": "FINISHED",
+  "start-time": 1792983542081,
+  "end-time": 1792983545329,
+  "duration": 3248,
+  "maxParallelism": -1,
+  "now": 1792983547526,
+  "timestamps": {
+    "RESTARTING": 0,
+    "RECONCILING": 0,
+    "INITIALIZING": 1792983542081,
+    "CANCELED": 0,
+    "FAILING": 0,
+    "FINISHED": 1792983545329,
+    "SUSPENDED": 0,
+    "FAILED": 0,
+    "CREATED": 1792983542221,
+    "RUNNING": 1792983542343,
+    "CANCELLING": 0
+  },
+  "vertices": [
+    {
+      "id": "46328447a2022b04964f2f614c774125",
+      "name": "Source: events[1] -> (Calc[2], Calc[7] -> LocalWindowAggregate[8], Calc[13] -> LocalWindowAggregate[14], Calc[19], Calc[23] -> LocalWindowAggregate[24])",
+      "maxParallelism": 128,
+      "parallelism": 1,
+      "status": "FINISHED",
+      "start-time": 1792983542630,
+      "end-time": 1792983545302,
+      "duration": 2672,
+      "tasks": {
+        "FINISHED": 1,
+        "SCHEDULED": 0,
+        "INITIALIZING": 0,
+        "FAILED": 0,
+        "CANCELED": 0,
+        "RECONCILING": 0,
+        "DEPLOYING": 0,
+        "RUNNING": 0,
+        "CANCELING": 0,
+        "CREATED": 0
+      },
+      "metrics": {
+        "read-bytes": 0,
+        "read-bytes-complete": true,
+        "write-bytes": 1249676,
+        "write-bytes-complete": true,
+        "read-records": 0,
+        "read-records-complete": true,
+        "write-records": 13128,
+        "write-records-complete": true,
+        "accumulated-backpressured-time": 0,
+        "accumulated-idle-time": 214,
+        "accumulated-busy-time": 906.0
+      }
+    },
+    {
+      "id": "31c0a67bc2d95e207042541dd4dd115a",
+      "name": "GroupAggregate[4] -> Calc[5] -> ConstraintEnforcer[6] -> overall[6]: Writer -> overall[6]: Committer",
+      "maxParallelism": 1,
+      "parallelism": 1,
+      "status": "FINISHED",
+      "start-time": 1792983542636,
+      "end-time": 1792983545326,
+      "duration": 2690,
+      "tasks": {
+        "FINISHED": 1,
+        "SCHEDULED": 0,
+        "INITIALIZING": 0,
+        "FAILED": 0,
+        "CANCELED": 0,
+        "RECONCILING": 0,
+        "DEPLOYING": 0,
+        "RUNNING": 0,
+        "CANCELING": 0,
+        "CREATED": 0
+      },
+      "metrics": {
+        "read-bytes": 649870,
+        "read-bytes-complete": true,
+        "write-bytes": 0,
+        "write-bytes-complete": true,
+        "read-records": 9997,
+        "read-records-complete": true,
+        "write-records": 0,
+        "write-records-complete": true,
+        "accumulated-backpressured-time": 0,
+        "accumulated-idle-time": 356,
+        "accumulated-busy-time": 746.0
+      }
+    },
+    {
+      "id": "aac90d0920a2b725595cc651fcd2891b",
+      "name": "GlobalWindowAggregate[10] -> Calc[11] -> ConstraintEnforcer[12] -> windows[12]: Writer -> windows[12]: Committer",
+      "maxParallelism": 1,
+      "parallelism": 1,
+      "status": "FINISHED",
+      "start-time": 1792983542649,
+      "end-time": 1792983545326,
+      "duration": 2677,
+      "tasks": {
+        "FINISHED": 1,
+        "SCHEDULED": 0,
+        "INITIALIZING": 0,
+        "FAILED": 0,
+        "CANCELED": 0,
+        "RECONCILING": 0,
+        "DEPLOYING": 0,
+        "RUNNING": 0,
+        "CANCELING": 0,
+        "CREATED": 0
+      },
+      "metrics": {
+        "read-bytes": 450325,
+        "read-bytes-complete": true,
+        "write-bytes": 0,
+        "write-bytes-complete": true,
+        "read-records": 1828,
+        "read-records-complete": true,
+        "write-records": 0,
+        "write-records-complete": true,
+        "accumulated-backpressured-time": 0,
+        "accumulated-idle-time": 505,
+        "accumulated-busy-time": 501.0
+      }
+    },
+    {
+      "id": "da22384ac20e2381d45e5d2dffdbff0c",
+      "name": "GlobalWindowAggregate[16] -> Calc[17] -> ConstraintEnforcer[18] -> hours[18]: Writer -> hours[18]: Committer",
+      "maxParallelism": 1,
+      "parallelism": 1,
+      "status": "FINISHED",
+      "start-time": 1792983542650,
+      "end-time": 1792983545311,
+      "duration": 2661,
+      "tasks": {
+        "FINISHED": 1,
+        "SCHEDULED": 0,
+        "INITIALIZING": 0,
+        "FAILED": 0,
+        "CANCELED": 0,
+        "RECONCILING": 0,
+        "DEPLOYING": 0,
+        "RUNNING": 0,
+        "CANCELING": 0,
+        "CREATED": 0
+      },
+      "metrics": {
+        "read-bytes": 3200,
+        "read-bytes-complete": true,
+        "write-bytes": 0,
+        "write-bytes-complete": true,
+        "read-records": 95,
+        "read-records-complete": true,
+        "write-records": 0,
+        "write-records-complete": true,
+        "accumulated-backpressured-time": 0,
+        "accumulated-idle-time": 852,
+        "accumulated-busy-time": 271.0
+      }
+    },
+    {
+      "id": "b3d008195a04665194e77dc742709522",
+      "name": "GroupAggregate[21] -> ConstraintEnforcer[22] -> categories[22]: Writer -> categories[22]: Committer",
+      "maxParallelism": 128,
+      "parallelism": 1,
+      "status": "FINISHED",
+      "start-time": 1792983542651,
+      "end-time": 1792983545312,
+      "duration": 2661,
+      "tasks": {
+        "FINISHED": 1,
+        "SCHEDULED": 0,
+        "INITIALIZING": 0,
+        "FAILED": 0,
+        "CANCELED": 0,
+        "RECONCILING": 0,
+        "DEPLOYING": 0,
+        "RUNNING": 0,
+        "CANCELING": 0,
+        "CREATED": 0
+      },
+      "metrics": {
+        "read-bytes": 4540,
+        "read-bytes-complete": true,
+        "write-bytes": 0,
+        "write-bytes-complete": true,
+        "read-records": 179,
+        "read-records-complete": true,
+        "write-records": 0,
+        "write-records-complete": true,
+        "accumulated-backpressured-time": 0,
+        "accumulated-idle-time": 779,
+        "accumulated-busy-time": 323.0
+      }
+    },
+    {
+      "id": "786177ec92ba085cd7f0e86672d722ea",
+      "name": "GlobalWindowAggregate[26] -> Calc[27] -> ConstraintEnforcer[28] -> cumulative[28]: Writer -> cumulative[28]: Committer",
+      "maxParallelism": 1,
+      "parallelism": 1,
+      "status": "FINISHED",
+      "start-time": 1792983542651,
+      "end-time": 1792983545312,
+      "duration": 2661,
+      "tasks": {
+        "FINISHED": 1,
+        "SCHEDULED": 0,
+        "INITIALIZING": 0,
+        "FAILED": 0,
+        "CANCELED": 0,
+        "RECONCILING": 0,
+        "DEPLOYING": 0,
+        "RUNNING": 0,
+        "CANCELING": 0,
+        "CREATED": 0
+      },
+      "metrics": {
+        "read-bytes": 141806,
+        "read-bytes-complete": true,
+        "write-bytes": 0,
+        "write-bytes-complete": true,
+        "read-records": 1029,
+        "read-records-complete": true,
+        "write-records": 0,
+        "write-records-complete": true,
+        "accumulated-backpressured-time": 0,
+        "accumulated-idle-time": 635,
+        "accumulated-busy-time": 374.0
+      }
+    }
+  ],
+  "status-counts": {
+    "FINISHED": 6,
+    "SCHEDULED": 0,
+    "INITIALIZING": 0,
+    "FAILED": 0,
+    "CANCELED": 0,
+    "RECONCILING": 0,
+    "DEPLOYING": 0,
+    "RUNNING": 0,
+    "CANCELING": 0,
+    "CREATED": 0
+  },
+  "plan": {
+    "jid": "5b7dad0d5786e5f1038b7aaa72dd046b",
+    "name": "insert-into_default_catalog.default_database.overall,default_catalog.default_database.windows,default_catalog.default_database.hours,default_catalog.default_database.categories,default_catalog.default_database.cumulative",
+    "type": "STREAMING",
+    "nodes": [
+      {
+        "id": "31c0a67bc2d95e207042541dd4dd115a",
+        "parallelism": 1,
+        "operator": "",
+        "operator_strategy": "",
+        "description": "[4]:GroupAggregate(select=[COUNT(*) AS EXPR$1, COUNT(DISTINCT user_id) AS EXPR$2, SUM($f1) AS EXPR$3, SUM($f2) AS EXPR$4, SUM($f3) AS EXPR$5, SUM($f4) AS EXPR$6, COUNT(DISTINCT $f5) AS EXPR$7])<br/>+- [5]:Calc(select=['all' AS metric_key, CAST(EXPR$1 AS BIGINT) AS total_events, CAST(EXPR$2 AS BIGINT) AS active_users, CAST(EXPR$3 AS BIGINT) AS pv, CAST(EXPR$4 AS BIGINT) AS fav, CAST(EXPR$5 AS BIGINT) AS cart, CAST(EXPR$6 AS BIGINT) AS buy_events, CAST(EXPR$7 AS BIGINT) AS buyers])<br/>   +- [6]:ConstraintEnforcer[NotNullEnforcer(fields=[metric_key])]<br/>      +- overall[6]: Writer<br/>         +- overall[6]: Committer<br/>",
+        "inputs": [
+          {
+            "num": 0,
+            "id": "46328447a2022b04964f2f614c774125",
+            "ship_strategy": "GLOBAL",
+            "exchange": "pipelined_bounded"
+          }
+        ],
+        "optimizer_properties": {}
+      },
+      {
+        "id": "aac90d0920a2b725595cc651fcd2891b",
+        "parallelism": 1,
+        "operator": "",
+        "operator_strategy": "",
+        "description": "[10]:GlobalWindowAggregate(window=[TUMBLE(slice_end=[$slice_end], size=[5 min])], select=[COUNT(count1$0) AS EXPR$1, COUNT(distinct$0 count$1) AS EXPR$2, SUM(sum$2) AS EXPR$3, SUM(sum$3) AS EXPR$4, SUM(sum$4) AS EXPR$5, SUM(sum$5) AS EXPR$6, COUNT(distinct$1 count$6) AS EXPR$7, start('w$) AS window_start, end('w$) AS window_end])<br/>+- [11]:Calc(select=[DATE_FORMAT(window_start, 'yyyy-MM-dd HH:mm:ss') AS window_start, CAST(EXPR$1 AS BIGINT) AS total_events, CAST(EXPR$2 AS BIGINT) AS active_users, CAST(EXPR$3 AS BIGINT) AS pv, CAST(EXPR$4 AS BIGINT) AS fav, CAST(EXPR$5 AS BIGINT) AS cart, CAST(EXPR$6 AS BIGINT) AS buy_events, CAST(EXPR$7 AS BIGINT) AS buyers])<br/>   +- [12]:ConstraintEnforcer[NotNullEnforcer(fields=[window_start])]<br/>      +- windows[12]: Writer<br/>         +- windows[12]: Committer<br/>",
+        "inputs": [
+          {
+            "num": 0,
+            "id": "46328447a2022b04964f2f614c774125",
+            "ship_strategy": "GLOBAL",
+            "exchange": "pipelined_bounded"
+          }
+        ],
+        "optimizer_properties": {}
+      },
+      {
+        "id": "da22384ac20e2381d45e5d2dffdbff0c",
+        "parallelism": 1,
+        "operator": "",
+        "operator_strategy": "",
+        "description": "[16]:GlobalWindowAggregate(window=[TUMBLE(slice_end=[$slice_end], size=[1 h])], select=[COUNT(count1$0) AS EXPR$1, start('w$) AS window_start, end('w$) AS window_end])<br/>+- [17]:Calc(select=[DATE_FORMAT(window_start, 'yyyy-MM-dd HH:mm:ss') AS EXPR$0, EXPR$1])<br/>   +- [18]:ConstraintEnforcer[NotNullEnforcer(fields=[hour_start])]<br/>      +- hours[18]: Writer<br/>         +- hours[18]: Committer<br/>",
+        "inputs": [
+          {
+            "num": 0,
+            "id": "46328447a2022b04964f2f614c774125",
+            "ship_strategy": "GLOBAL",
+            "exchange": "pipelined_bounded"
+          }
+        ],
+        "optimizer_properties": {}
+      },
+      {
+        "id": "b3d008195a04665194e77dc742709522",
+        "parallelism": 1,
+        "operator": "",
+        "operator_strategy": "",
+        "description": "[21]:GroupAggregate(groupBy=[category_id], select=[category_id, COUNT(*) AS EXPR$1])<br/>+- [22]:ConstraintEnforcer[NotNullEnforcer(fields=[category_id])]<br/>   +- categories[22]: Writer<br/>      +- categories[22]: Committer<br/>",
+        "inputs": [
+          {
+            "num": 0,
+            "id": "46328447a2022b04964f2f614c774125",
+            "ship_strategy": "HASH",
+            "exchange": "pipelined_bounded"
+          }
+        ],
+        "optimizer_properties": {}
+      },
+      {
+        "id": "786177ec92ba085cd7f0e86672d722ea",
+        "parallelism": 1,
+        "operator": "",
+        "operator_strategy": "",
+        "description": "[26]:GlobalWindowAggregate(window=[CUMULATE(slice_end=[$slice_end], max_size=[86400000 ms], step=[10 min])], select=[COUNT(distinct$0 count$0) AS EXPR$1, start('w$) AS window_start, end('w$) AS window_end])<br/>+- [27]:Calc(select=[DATE_FORMAT(window_end, 'yyyy-MM-dd HH:mm:ss') AS EXPR$0, EXPR$1])<br/>   +- [28]:ConstraintEnforcer[NotNullEnforcer(fields=[window_end])]<br/>      +- cumulative[28]: Writer<br/>         +- cumulative[28]: Committer<br/>",
+        "inputs": [
+          {
+            "num": 0,
+            "id": "46328447a2022b04964f2f614c774125",
+            "ship_strategy": "GLOBAL",
+            "exchange": "pipelined_bounded"
+          }
+        ],
+        "optimizer_properties": {}
+      },
+      {
+        "id": "46328447a2022b04964f2f614c774125",
+        "parallelism": 1,
+        "operator": "",
+        "operator_strategy": "",
+        "description": "[1]:TableSourceScan(table=[[default_catalog, default_database, events, watermark=[-(TO_TIMESTAMP_LTZ(ts, 0), 5000:INTERVAL SECOND)]]], fields=[user_id, item_id, category_id, behavior, ts])<br/>:- [2]:Calc(select=[user_id, CASE((behavior = 'pv'), 1, 0) AS $f1, CASE((behavior = 'fav'), 1, 0) AS $f2, CASE((behavior = 'cart'), 1, 0) AS $f3, CASE((behavior = 'buy'), 1, 0) AS $f4, CASE((behavior = 'buy'), user_id, null:BIGINT) AS $f5])<br/>:- [7]:Calc(select=[user_id, CASE((behavior = 'pv'), 1, 0) AS $f3, CASE((behavior = 'fav'), 1, 0) AS $f4, CASE((behavior = 'cart'), 1, 0) AS $f5, CASE((behavior = 'buy'), 1, 0) AS $f6, CASE((behavior = 'buy'), user_id, null:BIGINT) AS $f7, Reinterpret(TO_TIMESTAMP_LTZ(ts, 0)) AS event_time])<br/>:  +- [8]:LocalWindowAggregate(window=[TUMBLE(time_col=[event_time], size=[5 min])], select=[COUNT(*) AS count1$0, COUNT(distinct$0 user_id) AS count$1, SUM($f3) AS sum$2, SUM($f4) AS sum$3, SUM($f5) AS sum$4, SUM($f6) AS sum$5, COUNT(distinct$1 $f7) AS count$6, DISTINCT(user_id) AS distinct$0, DISTINCT($f7) AS distinct$1, slice_end('w$) AS $slice_end])<br/>:- [13]:Calc(select=[Reinterpret(TO_TIMESTAMP_LTZ(ts, 0)) AS event_time], where=[(behavior = 'buy')])<br/>:  +- [14]:LocalWindowAggregate(window=[TUMBLE(time_col=[event_time], size=[1 h])], select=[COUNT(*) AS count1$0, slice_end('w$) AS $slice_end])<br/>:- [19]:Calc(select=[category_id], where=[(behavior = 'buy')])<br/>+- [23]:Calc(select=[user_id, Reinterpret(TO_TIMESTAMP_LTZ(ts, 0)) AS event_time])<br/>   +- [24]:LocalWindowAggregate(window=[CUMULATE(time_col=[event_time], max_size=[86400000 ms], step=[10 min])], select=[COUNT(distinct$0 user_id) AS count$0, DISTINCT(user_id) AS distinct$0, slice_end('w$) AS $slice_end])<br/>",
+        "optimizer_properties": {}
+      }
+    ]
+  }
+}

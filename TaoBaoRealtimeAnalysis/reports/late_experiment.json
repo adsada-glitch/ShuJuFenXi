@@ -1,0 +1,24 @@
+{
+  "experiment": "same four events, different watermark tolerance",
+  "results": [
+    {
+      "run": "late_20261026_c_short",
+      "job": "97a002c59cb4e17959e44352cd3152fc",
+      "watermark_seconds": 5,
+      "input_events": 4,
+      "overall_events": 4,
+      "window_events": 3,
+      "window_buys": 1
+    },
+    {
+      "run": "late_20261026_c_wide",
+      "job": "efb0b5e2362d5b8bd2514004fb96b683",
+      "watermark_seconds": 1200,
+      "input_events": 4,
+      "overall_events": 4,
+      "window_events": 4,
+      "window_buys": 2
+    }
+  ],
+  "verified": true
+}
