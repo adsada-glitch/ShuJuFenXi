@@ -1,0 +1,264 @@
+{
+  "dataset": "MovieLens 100K",
+  "source_url": "https://files.grouplens.org/datasets/movielens/ml-100k.zip",
+  "source_sha256": "50d2a982c66986937beb9ffb3aa76efe955bf3d5c6b761f4e3a7cd717c6a3229",
+  "seed": 42,
+  "split_policy": "global rating time 70/15/15; timestamp ties stay together",
+  "partitions": {
+    "train": {
+      "n_ratings": 69997,
+      "n_users": 674,
+      "n_movies": 1573,
+      "start_utc": "1997-09-20T03:05:10+00:00",
+      "end_utc": "1998-02-09T15:46:04+00:00"
+    },
+    "validation": {
+      "n_ratings": 15003,
+      "n_users": 247,
+      "n_movies": 1382,
+      "start_utc": "1998-02-09T15:47:51+00:00",
+      "end_utc": "1998-03-27T22:06:54+00:00"
+    },
+    "test": {
+      "n_ratings": 15000,
+      "n_users": 226,
+      "n_movies": 1394,
+      "start_utc": "1998-03-27T22:07:03+00:00",
+      "end_utc": "1998-04-22T23:10:38+00:00"
+    }
+  },
+  "validation_trials": [
+    {
+      "mode": "global",
+      "strength": 0.0,
+      "rmse": 1.1150217012595078,
+      "mae": 0.9356973689099107
+    },
+    {
+      "mode": "movie",
+      "strength": 1.0,
+      "rmse": 1.0272250605846536,
+      "mae": 0.8195209679229
+    },
+    {
+      "mode": "movie",
+      "strength": 5.0,
+      "rmse": 1.0253231598084829,
+      "mae": 0.8181881964811759
+    },
+    {
+      "mode": "movie",
+      "strength": 10.0,
+      "rmse": 1.0277217618205297,
+      "mae": 0.8212153947302949
+    },
+    {
+      "mode": "movie",
+      "strength": 25.0,
+      "rmse": 1.0354973718780578,
+      "mae": 0.8314580559016811
+    },
+    {
+      "mode": "movie",
+      "strength": 50.0,
+      "rmse": 1.045429614926446,
+      "mae": 0.8448565219654651
+    },
+    {
+      "mode": "user_movie",
+      "strength": 1.0,
+      "rmse": 1.0279225899598188,
+      "mae": 0.8106511309141925
+    },
+    {
+      "mode": "user_movie",
+      "strength": 5.0,
+      "rmse": 1.0347768803572421,
+      "mae": 0.8145428527310434
+    },
+    {
+      "mode": "user_movie",
+      "strength": 10.0,
+      "rmse": 1.0338549400833732,
+      "mae": 0.8160560167464037
+    },
+    {
+      "mode": "user_movie",
+      "strength": 25.0,
+      "rmse": 1.0358064635323732,
+      "mae": 0.8242520967324075
+    },
+    {
+      "mode": "user_movie",
+      "strength": 50.0,
+      "rmse": 1.0432059710844588,
+      "mae": 0.8380761959115991
+    }
+  ],
+  "selected_strength": {
+    "global": 0.0,
+    "movie": 5.0,
+    "user_movie": 1.0
+  },
+  "final_training": "train + validation after freezing hyperparameters",
+  "test_scores": {
+    "global": {
+      "rmse": 1.1296477756878442,
+      "mae": 0.958526894117647
+    },
+    "movie": {
+      "rmse": 1.0294901906978107,
+      "mae": 0.8333411087549204
+    },
+    "user_movie": {
+      "rmse": 1.0114667135351285,
+      "mae": 0.809092046367338
+    }
+  },
+  "test_coverage": {
+    "known_user_fraction": 0.1676,
+    "known_movie_fraction": 0.9906666666666667,
+    "both_known_fraction": 0.16213333333333332,
+    "both_unknown_fraction": 0.0038666666666666667
+  },
+  "paired_comparison": {
+    "reference": "movie",
+    "candidate": "user_movie",
+    "delta_rmse": -0.018023477162682155,
+    "ci95": [
+      -0.040267372082747575,
+      -0.0009309235661194659
+    ],
+    "n_boot": 2000,
+    "n_users": 226,
+    "seed": 42
+  },
+  "slices": [
+    {
+      "slice_type": "movie_popularity",
+      "slice": "unseen",
+      "n_ratings": 140,
+      "n_users": 55,
+      "scores": {
+        "global": {
+          "rmse": 1.1804451155331033,
+          "mae": 0.9746731092436977
+        },
+        "movie": {
+          "rmse": 1.1804451155331033,
+          "mae": 0.9746731092436977
+        },
+        "user_movie": {
+          "rmse": 1.1199563874687235,
+          "mae": 0.9006378482536976
+        }
+      }
+    },
+    {
+      "slice_type": "movie_popularity",
+      "slice": "tail (1-20)",
+      "n_ratings": 1125,
+      "n_users": 162,
+      "scores": {
+        "global": {
+          "rmse": 1.2487013281487354,
+          "mae": 1.0464329934640522
+        },
+        "movie": {
+          "rmse": 1.1341353105992658,
+          "mae": 0.93314828257137
+        },
+        "user_movie": {
+          "rmse": 1.1131180876809241,
+          "mae": 0.9020003295155659
+        }
+      }
+    },
+    {
+      "slice_type": "movie_popularity",
+      "slice": "middle (21-100)",
+      "n_ratings": 5568,
+      "n_users": 207,
+      "scores": {
+        "global": {
+          "rmse": 1.1333541047251259,
+          "mae": 0.9547674526707234
+        },
+        "movie": {
+          "rmse": 1.0173635691501002,
+          "mae": 0.8278776550820137
+        },
+        "user_movie": {
+          "rmse": 0.9940595894365747,
+          "mae": 0.7973775814244045
+        }
+      }
+    },
+    {
+      "slice_type": "movie_popularity",
+      "slice": "head (>100)",
+      "n_ratings": 8167,
+      "n_users": 214,
+      "scores": {
+        "global": {
+          "rmse": 1.1087697467648236,
+          "mae": 0.9487041609346077
+        },
+        "movie": {
+          "rmse": 1.0197380148373747,
+          "mae": 0.8208947954745004
+        },
+        "user_movie": {
+          "rmse": 1.0065547651998317,
+          "mae": 0.8027112345632981
+        }
+      }
+    },
+    {
+      "slice_type": "user_coverage",
+      "slice": "known_user",
+      "n_ratings": 2514,
+      "n_users": 91,
+      "scores": {
+        "global": {
+          "rmse": 1.1765521494225577,
+          "mae": 1.002028826805185
+        },
+        "movie": {
+          "rmse": 1.066160961091622,
+          "mae": 0.8734423349662894
+        },
+        "user_movie": {
+          "rmse": 0.9530876756137691,
+          "mae": 0.7590865212193368
+        }
+      }
+    },
+    {
+      "slice_type": "user_coverage",
+      "slice": "unseen_user",
+      "n_ratings": 12486,
+      "n_users": 135,
+      "scores": {
+        "global": {
+          "rmse": 1.1199662404856152,
+          "mae": 0.9497679754265954
+        },
+        "movie": {
+          "rmse": 1.021947563842753,
+          "mae": 0.8252669070333617
+        },
+        "user_movie": {
+          "rmse": 1.0228181589115148,
+          "mae": 0.8191604341794534
+        }
+      }
+    }
+  ],
+  "environment": {
+    "python": "3.12.5",
+    "numpy": "2.2.6",
+    "pandas": "2.3.3",
+    "matplotlib": "3.10.7"
+  }
+}

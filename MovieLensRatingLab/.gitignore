@@ -1,0 +1,11 @@
+data/
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.ipynb_checkpoints/
+.DS_Store
+build/
+dist/
+reports/local/
+reports/figures/*.png
