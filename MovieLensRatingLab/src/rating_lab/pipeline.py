@@ -107,6 +107,8 @@ def make_figures(ratings, trials, scores, slices, figures):
     def save(fig, name):
         fig.tight_layout()
         fig.savefig(figures / f"{name}.svg", metadata={"Date": None})
+        svg = figures / f"{name}.svg"
+        svg.write_text("\n".join(line.rstrip() for line in svg.read_text(encoding="utf-8").splitlines()) + "\n", encoding="utf-8")
         fig.savefig(figures / f"{name}.png")
         plt.close(fig)
 
