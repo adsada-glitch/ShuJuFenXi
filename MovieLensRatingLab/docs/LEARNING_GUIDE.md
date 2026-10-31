@@ -1,805 +1,612 @@
-# 完整学习过程：从运行项目到独立完成电影评分实验
+# 完整学习过程：从 MovieLens 原始数据到分析结论
 
-这是一份按顺序带做的教程。你不用在几份路线图之间切换：从第 0 步开始，完成一节的检查，再进入下一节。`reports/BASELINE_REPORT.md` 是程序生成的结果参考，Notebook 是执行代码的工作区，本文件负责全部学习顺序。
+这份案例面向想应聘数据分析岗位、已有 Python 和 SQL 基础的人。学习主线是：**明确问题 → 理解数据来源 → 检查与处理数据 → 定义指标 → SQL 汇总 → Python 核对和可视化 → 解释结果 → 形成建议与报告。**
 
-项目要回答的是：**用历史上已经记录的电影评分，预测后续记录的评分时，加入用户偏置能带来多少改善？这种改善对冷启动、冷门电影和不同时期是否一样？**
+这里不从安装软件开始，也不以训练模型为目标。你需要学会的是：为什么这样分析，这个数字到底代表什么，以及结论有没有超出证据。
 
-一行数据是一位用户对一部电影提交的一条 1–5 星评分。没有评分的用户电影组合不是 0 分，也不能直接当作不喜欢。这里做的是评分预测；没有曝光、点击或随机分配数据，不能据此证明推荐系统提高点击率。
+## 一、先明确这次分析要帮谁解决什么问题
 
-## 先看全程
+我们设定一个**模拟的内容编辑任务**：内容团队想了解样本里哪些影片获得较多评分、不同类型的反馈如何，以及怎样形成兼顾评分量和口碑的候选名单。
 
-| 顺序 | 你实际要做的事 | 完成后留下什么 | 建议用时 |
+这不是一家真实平台交付的项目。数据来自公开的历史研究样本，因此建议只能是待进一步验证的内容候选，不能声称已经带来播放、留存或收入增长。
+
+把一个模糊需求拆成四个能回答的问题：
+
+| 分析问题 | 为什么要回答 | 本次用的方法 | 预期交付 |
 |---|---|---|---|
-| 0 | 建好环境，运行现有基线 | 成功运行记录 | 30–60 分钟 |
-| 1 | 建立唯一的代码工作区 | 可连续运行的 Notebook | 15 分钟 |
-| 2 | 审计数据，认识评分和时间 | `audit.json`、趋势图 | 1–2 小时 |
-| 3 | 手动检查全局时间切分 | `split.json`、时间顺序断言 | 1 小时 |
-| 4 | 用小例子算懂三个模型 | 手算与代码核对 | 1–2 小时 |
-| 5 | 只在验证集比较模型、调参 | `validation_baselines.json` | 1–2 小时 |
-| 6 | 冻结参数，理解最终重训 | `coverage.json`、分组指标 | 1–2 小时 |
-| 7 | 比较差值和统计不确定性 | `bootstrap_validation.json` | 1–2 小时 |
-| 8 | 做跨时间复验 | `rolling_validation.json` | 1–2 小时 |
-| 9 | 选做：实现并检验矩阵分解 | MF 模型、验证结果 | 3–6 小时 |
-| 10 | 理解测试、CI 与提交边界 | 一次有意义的代码提交 | 1 小时 |
-| 11 | 写出自己的完整结论 | `docs/MY_FINDINGS.md` | 1–2 小时 |
+| 评分参与随时间怎样变化？ | 区分记录量变化来自人数还是人均提交量 | 完整月份比较、日历天数标准化、人数×人均量分解 | 月度表与趋势图 |
+| 评分是否集中在少数影片？ | 理解样本覆盖集中在哪里，哪些影片证据稀薄 | 分组聚合、排序、累计占比、长尾切片 | 集中度指标与分布图 |
+| 不同类型的覆盖和评分反馈怎样？ | 比较内容结构，同时处理多标签重复计算 | 类型桥表、等比分摊、两种均值口径 | 类型对照表 |
+| 哪些影片值得进入口碑候选名单？ | 避免“只有几条评分的满分片”直接登顶 | 样本量门槛、收缩加权均分、参数敏感性 | 候选榜单与稳定性记录 |
 
-上面的时间只是参考。完成 0–8、10–11 步就构成一个完整分析项目；第 9 步是建模进阶，不是开始分析前必须跨过的门槛。
+**为什么暂时不用预测模型？** 这些问题首先是对已观测样本的描述与诊断，不是预测未来评分。因此不需要先划分训练集、调参或解释 RMSE。只有当任务改成预测时，才需要另设预测目标与时间验证。
 
-**三种数据范围始终分清：**
+最终作品要能展示三件事：你定义了正确的指标；你能可靠地算出它们；你能根据证据提出有边界的建议。
 
-| 名称 | 行数 | 允许做什么 |
-|---|---:|---|
-| `train` | 69,997 | 拟合开发模型、统计验证阶段的电影流行度和 ID 可见性 |
-| `validation` | 15,003 | 比较方案、选择参数、做开发诊断 |
-| `test` | 15,000 | 复现已公开的基准比较；不参与调参 |
-| `final_train = train + validation` | 85,000 | 参数冻结后重拟合；定义测试阶段的 ID 可见性和电影流行度 |
+## 二、数据从哪里来，为什么选它
 
-仓库已经公开当前 `test` 的基线结果，因此后续在这段数据上改模型、再比较，属于公开基准上的探索。你完全可以用它学习，但不能说它仍是从未看过的独立确认数据。需要独立确认时，另行预留未查看的数据并先固定方案；滚动验证检验稳定性，不会凭空产生新的独立样本。
+### 2.1 来源和获取方式
 
----
+数据使用 **MovieLens 100K 固定版本**：
 
-## 第 0 步：把项目跑起来
+- [官方介绍](https://grouplens.org/datasets/movielens/100k/)
+- [原始压缩包](https://files.grouplens.org/datasets/movielens/ml-100k.zip)
+- [官方字段说明与许可](https://files.grouplens.org/datasets/movielens/ml-100k-README.txt)
 
-### 0.1 明确目录
+通过官方静态下载获取，不需要爬虫，也不是实时接口。项目下载后检查固定 SHA-256，确保所有人分析的是同一份原包；本地已经下载的包也会核验。
 
-以下终端命令默认使用 **Windows PowerShell**。仓库目录叫 `ShuJuFenXi`，项目目录是里面的 `MovieLensRatingLab`。
+选择它的原因是：有评分明细、电影信息和多标签类型，适合练习事实表与维表关联、指标定义、分组分析和结果解释。规模为 10 万条评分，一般个人电脑可以处理。
 
-还没有本地仓库时，在你准备保存项目的目录运行：
+选用它的代价也要写清：数据来自 1997–1998 年，本次 UTC 评分时间覆盖 **1997-09-20 至 1998-04-22**；参与者经过筛选，至少有 20 条评分且人口信息完整。它不代表今天所有观众。我们不使用人口信息做群体推断。
 
-```powershell
-git clone https://github.com/adsada-glitch/ShuJuFenXi.git
-cd ShuJuFenXi
+### 2.2 先确认一行是什么
+
+| 源文件 | 一行代表什么 | 本次使用哪些字段 |
+|---|---|---|
+| `u.data` | 某用户对某电影提交的一条评分 | 用户 ID、电影 ID、1–5 星评分、提交时间戳 |
+| `u.item` | 一个电影 ID 对应的目录条目 | ID、标题、发行日期、19 个类型标记 |
+| `u.genre` | 一个类型编码与名称 | 类型 ID、名称 |
+
+`u.item` 使用 Latin-1 编码，字段以 `|` 分隔。最后 19 列是 0/1 类型标记，一部电影可以同时属于多个类型。按默认逗号分隔或当成“每片只有一种类型”，会把结构读错。
+
+时间戳记录的是**提交评分的时间**，不是观影时间。用户 ID、电影 ID 是类别编码，数值大小没有年龄、质量或发行先后的含义。
+
+### 2.3 先列出它没有提供的东西
+
+没有曝光日志、播放记录、未评分原因、注册时间、付费和收入，所以不能直接计算平台 MAU、真实留存率、播放转化率或收入贡献。
+
+例如“当月有评分的用户数”只代表当月在此样本中提交评分的独立用户；不能把它改名为“平台月活”。这是指标口径问题，不是换一个 SQL 函数就能补齐的数据。
+
+**本节产出：** 用自己的话写一段数据说明，包含来源、粒度、时间、筛选规则，以及至少三个不能回答的业务问题。
+
+## 三、先理解数据关系，再决定怎样清洗
+
+分析用三张主表：
+
+```text
+ratings：一条评分一行（用户ID + 电影ID）
+    多对一 → movies：一个电影ID一行
+                  一对多 → movie_genres：一个电影ID × 一个类型一行
 ```
 
-已经有本地仓库时，进入那个目录；先执行 `git status` 查看是否有自己的未提交修改，再用正常 Git 流程同步。不要为了照教程重置或覆盖自己的文件。
+评分关联电影信息是多对一；评分继续关联类型是多对多展开，**行数会增加**。能连接成功，不代表连接后的计数仍然正确。
 
-从仓库目录进入项目并核对文件：
+### 3.1 每条清洗规则都要有理由
 
-```powershell
-cd MovieLensRatingLab
-Get-Location
-Test-Path .\pyproject.toml
-Test-Path .\src\rating_lab\models.py
-```
+| 检查 | 防止什么错误 | 处理原则 |
+|---|---|---|
+| 评分关键字段缺失 | 无法确认用户、电影或评分含义 | 核验来源；关键问题停止流程或隔离，不默默填 0 |
+| `(user_id, movie_id)` 重复 | 同一评分组合重复计权 | 先确认是重复导入还是业务允许多次评分；本版本没有该重复 |
+| 评分不在 1–5 | 字段解析或取值错误 | 检查解析与源文件；1 星、5 星本身都合法，不作为异常值删掉 |
+| 电影 ID 不唯一、评分找不到电影 | 关联倍增或遗漏 | 检查键和外键；不靠 INNER JOIN 把问题藏掉 |
+| 标题相同但 ID 不同 | 误删翻拍、版本条目或目录差异 | 保留源 ID 并标记；不能只按标题 `drop_duplicates` |
+| 日期缺失、无法解析 | 错误时间分组 | 保留电影，日期转为空并记录；不要因为非关键日期缺失删掉有效评分 |
+| 类型未知或多标签 | 丢失未知类、重复计算 | 未知保留，多类型拆桥表，分析时明确计数规则 |
+| 不使用的视频发行日、URL 等字段缺失 | 对无关字段过度清洗 | 不对全表一律 `dropna()`；先看这些字段是否影响本次问题 |
 
-最后两条都应输出 `True`。后面的安装命令必须在这个项目目录中运行。
+**清洗不是必须删掉一些行才算做了工作。** 如果核验后 10 万条评分都有效，正确结果就是保留 10 万条，并留下“为什么可以保留”的证据。
 
-### 0.2 建立环境
+### 3.2 本次原始数据的实际审计
 
-```powershell
-py -0p
-py -3.12 --version
-py -3.12 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -e ".[notebook]"
-.\.venv\Scripts\python.exe -c "import sys, rating_lab; print(sys.executable); print(rating_lab.__file__)"
-```
+| 检查 | 实际结果 | 处理与理由 |
+|---|---|---|
+| 评分缺失 / 重复组合 / 越界 | 0 / 0 / 0 | 全部有效，保留 100,000 条 |
+| 评分找不到电影 / 找不到用户 | 0 / 0 | 外键完整，不通过关联删记录 |
+| 电影 ID 重复 | 0 | 以 ID 为主键保留 1,682 条目录记录 |
+| 同名不同 ID | 18 组，涉及 36 行 | 保留并标注；不能无依据按标题合并 |
+| 发行日期缺失 / 非空日期解析失败 | 1 / 0 | 缺失保留 NULL，不删电影或关联评分 |
+| 视频发行日期缺失 | 1682 | 本次不使用此字段，不造日期 |
+| URL 缺失 | 3 | 不影响本次聚合，不据此删行 |
+| 多类型 / unknown 类型电影 | 849 / 2 | 按真实标签拆桥表，unknown 保留 |
+| 电影类型桥表行数 | 2893 | 与影片数不同，因为一片多标签 |
 
-项目声明支持 Python 3.11+，本教程和 CI 统一用已验证的 **Python 3.12**。`py -0p` 列出 Windows 已安装解释器；没有 3.12 时先准备对应解释器，再继续，不要让命令意外使用另一版本。若系统没有 `py` 启动器，但 `python --version` 已确认是 3.12，可用 `python -m venv .venv` 创建环境。
+评分全部保留；电影目录以源 ID 为键保留；缺失或无效的非关键日期单独记录。类型展开只改变关联结构，不改变原始评分事实表。
 
-最后命令打印的第一个路径应在本项目的 `.venv` 中，第二个应指向本项目 `src/rating_lab/__init__.py`。`-e` 表示可编辑安装，之后修改 `src/` 的代码不用每次重装。
+18 个同名组是需要继续核查的质量问题，不是保留后就自动解决了。本次统计对象是源电影 ID 对应的目录条目，并非人工核实后的唯一作品；如果同一作品确有重复 ID，分散的评分会影响样本量和榜单。进入实际业务前应结合外部标识核实合并规则，当前不凭标题自行合并。
 
-这里直接调用虚拟环境 Python，不依赖 PowerShell 激活脚本，也不需要修改系统执行策略。macOS / Linux 用 `python3.12 -m venv .venv` 创建环境，用 `.venv/bin/python` 代替 `.\.venv\Scripts\python.exe`。
+**本节要想明白：** 关键字段为空和不参与分析的字段为空，为什么不能使用同一套删除规则？
 
-### 0.3 运行测试，再复现一次初版
+## 四、SQL 和 Python 在这条流程里分别做什么
 
-```powershell
-.\.venv\Scripts\python.exe -m unittest discover -s tests -v
-.\.venv\Scripts\python.exe -m rating_lab download
-.\.venv\Scripts\python.exe -m rating_lab run
-```
+SQL 适合关系关联、分组汇总、去重计数、排名和累计占比；Python 适合读取源文件、数据质量核查、独立复算、画图和敏感性比较。
 
-预期：12 项测试通过；下载命令显示 `Verified 100,000 ratings`；分析命令生成 `reports/BASELINE_REPORT.md`、`reports/metrics.json` 和 `reports/figures/`。
+本例使用 Python 自带的 SQLite 来执行 SQL，不要求你重新安装数据库。你已有的 MySQL 或 SQL Server 也能承载相同表结构和业务逻辑，但日期函数、取前 N 行等语法需要调整。本案例的参考 SQL 方言明确为 SQLite。
 
-参考测试误差，允许末位浮点差异：
+### 4.1 进入代码工作区
 
-| 模型 | Test RMSE | Test MAE |
-|---|---:|---:|
-| `global` | 1.1296 | 0.9585 |
-| `movie` | 1.0295 | 0.8333 |
-| `user_movie` | 1.0115 | 0.8091 |
-
-这一步只证明环境能跑通。你后续的调参代码直接使用 `train` 和 `validation`，不要用反复运行 `rating_lab run` 代替开发评估，因为 `run` 会自动显示测试结果并重写基线报告。
-
-**本节完成条件：** 能说清代码、原始数据、生成结果分别在哪；12 项测试通过；成功运行完整基线一次。
-
----
-
-## 第 1 步：建立连续的学习工作区
-
-### 1.1 启动 Notebook
-
-在项目目录的终端执行：
-
-```powershell
-.\.venv\Scripts\python.exe -m ipykernel install --user --name movielens-rating-lab --display-name "MovieLens Rating Lab"
-.\.venv\Scripts\python.exe -m jupyterlab
-```
-
-打开 `notebooks/01_explore.ipynb`，选择 **MovieLens Rating Lab** 内核。这个 Notebook 只提供空白工作区；后面的 Python 代码块按顺序各放入一个新单元格。
-
-**运行规则：** 标记为 `powershell` 的块在终端运行；标记为 `python` 的块在同一个 Notebook 内核依次运行。不要把 Python 代码逐行粘贴到 PowerShell。重启内核后，使用 “Restart Kernel and Run All Cells” 从头重跑，避免依赖以前残留的变量。
-
-### 1.2 运行初始化单元格
+在 `MovieLensRatingLab` 目录或它的 `notebooks` 目录启动你惯用的 Notebook/IDE。下面的 Python 块按顺序在同一会话执行；`sql` 块用于理解 SQL，也可在连接了本地数据库的客户端执行。
 
 ```python
-import json
-import sys
 from pathlib import Path
+import json
+import sqlite3
+import sys
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from rating_lab.data import PROJECT_ROOT, SOURCE_SHA256, load_ratings, temporal_split
-from rating_lab.models import BiasModel
-from rating_lab.bootstrap import paired_user_bootstrap
+PROJECT = Path.cwd()
+if not (PROJECT / "pyproject.toml").exists():
+    PROJECT = PROJECT.parent
+assert (PROJECT / "src/rating_lab").is_dir(), "请在项目目录或其 notebooks 目录运行"
+sys.path.insert(0, str(PROJECT / "src"))
 
-print(sys.executable)
-print(PROJECT_ROOT)
-OUTPUT = PROJECT_ROOT / "reports" / "learning"
+from rating_lab.analyst import prepare_database, load_queries, run_analysis
+
+database, audit = prepare_database(PROJECT / "data")
+conn = sqlite3.connect(database)
+queries = load_queries()
+OUTPUT = PROJECT / "reports" / "analyst_learning"
 OUTPUT.mkdir(parents=True, exist_ok=True)
 
-def save_json(name, value):
-    (OUTPUT / name).write_text(
-        json.dumps(value, ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
-    )
+def query(name):
+    return pd.read_sql_query(queries[name], conn)
 
-def metrics(y_true, prediction):
-    residual = np.asarray(y_true) - np.asarray(prediction)
-    return {"rmse": float(np.sqrt(np.mean(residual ** 2))),
-            "mae": float(np.mean(np.abs(residual)))}
-
-ratings = load_ratings()
-train, validation, test = temporal_split(ratings)
-print("Loaded:", len(ratings), "ratings")
-```
-
-`PROJECT_ROOT` 来自包文件位置，不依赖 Notebook 当前工作目录，所以输出始终写进本项目 `reports/learning/`。这里的 `metrics()` 与正式流水线使用同一公式；不导入报告模块，避免其绘图后端设置影响 Notebook 显示。不要将自己的实验输出覆盖到 `reports/metrics.json`，后者保留初版参考值。
-
-**本节产出：** 一个能重新从头运行的 Notebook；后面所有单元格共享这里的变量和导入。
-
----
-
-## 第 2 步：先审计数据，再画图
-
-打开 [data.py](../src/rating_lab/data.py) 的 `load_ratings()`，按“下载 → 哈希校验 → 读取评分 → 数据检查”的顺序读。无需先读网络下载的每个细节，先弄懂它保证了什么。
-
-| 字段 | 含义 | 不能误解成什么 |
-|---|---|---|
-| `user_id` | 匿名用户标识 | 数值大小不是年龄、活跃度或相似度 |
-| `movie_id` | 电影标识 | 数值大小不是发行顺序或质量 |
-| `rating` | 1–5 星评分 | 未评分不能补成 0 星 |
-| `timestamp` | 评分提交的 Unix 秒时间戳 | 不是观影时间、曝光时间或发行时间 |
-
-### 2.1 生成可复核的审计记录
-
-```python
-rating_time = pd.to_datetime(ratings["timestamp"], unit="s", utc=True)
-audit = {
-    "rows": int(len(ratings)),
-    "users": int(ratings["user_id"].nunique()),
-    "movies": int(ratings["movie_id"].nunique()),
-    "missing_cells": int(ratings.isna().sum().sum()),
-    "duplicate_user_movie_pairs": int(ratings.duplicated(["user_id", "movie_id"]).sum()),
-    "rating_min": int(ratings["rating"].min()),
-    "rating_max": int(ratings["rating"].max()),
-    "start_utc": rating_time.min().isoformat(),
-    "end_utc": rating_time.max().isoformat(),
-    "source_sha256": SOURCE_SHA256,
-}
-assert (audit["rows"], audit["users"], audit["movies"]) == (100000, 943, 1682)
-assert audit["missing_cells"] == audit["duplicate_user_movie_pairs"] == 0
-assert ratings["rating"].between(1, 5).all()
 print(json.dumps(audit, ensure_ascii=False, indent=2))
-save_json("audit.json", audit)
 ```
 
-每条检查对应一个风险：缺失会影响训练，重复组合可能造成重复计权，越界评分可能是解析错误，时间范围决定结论能外推到哪里。ID 是类别编码，不应直接当作有序数值特征输入普通线性回归。
+`prepare_database()` 是数据准备实现：核验下载包、按正确编码读取、检查字段与键、解析时间和日期、拆类型、写入本地数据库。第一次先运行它看到审计结果，再打开 [analyst.py](../src/rating_lab/analyst.py) 对照第 3 节逐条找实现，而不是把它当作黑箱清洗。
 
-### 2.2 只用开发数据画时间趋势
+原包和数据库只存本地 `data/`，不提交 GitHub。你的聚合分析记录存 `reports/analyst_learning/`；自动生成的参考结果存 `reports/analyst/`，两者分开，避免个人练习覆盖参考。
+
+### 4.2 亲手重做关键转换，理解“处理”到底做了什么
+
+下面直接读取已核验的本地原包，重做几个关键转换，不修改数据库。这样可以独立检查数据准备函数，而不是只相信“清洗完成”的提示。
 
 ```python
-development = pd.concat([train, validation], ignore_index=True)
-daily = (
-    development.assign(day=pd.to_datetime(development["timestamp"], unit="s", utc=True).dt.floor("D"))
-    .groupby("day")["rating"]
-    .agg(n="size", mean="mean")
+import io
+import zipfile
+
+with zipfile.ZipFile(PROJECT / "data/ml-100k.zip") as source:
+    raw_ratings = pd.read_csv(io.BytesIO(source.read("ml-100k/u.data")), sep="\t",
+                              names=["user_id", "movie_id", "rating", "timestamp"])
+    raw_items = pd.read_csv(io.BytesIO(source.read("ml-100k/u.item")), sep="|",
+                            encoding="latin-1", header=None, keep_default_na=False)
+
+assert raw_items.shape == (1682, 24)
+assert raw_ratings.duplicated(["user_id", "movie_id"]).sum() == 0
+assert raw_ratings["rating"].between(1, 5).all()
+processed_ratings = raw_ratings.assign(
+    rated_at_utc=pd.to_datetime(raw_ratings["timestamp"], unit="s", utc=True),
 )
+processed_ratings["rating_month"] = processed_ratings["rated_at_utc"].dt.strftime("%Y-%m")
+release_dates = pd.to_datetime(raw_items[2], format="%d-%b-%Y", errors="coerce")
+assert int(release_dates.isna().sum()) == 1
+
+flags = raw_items.iloc[:, [0] + list(range(5, 24))].copy()
+flags.columns = ["movie_id"] + [f"genre_{index}" for index in range(19)]
+bridge = flags.melt(id_vars="movie_id", var_name="genre_flag", value_name="present")
+bridge = bridge.loc[bridge["present"] == 1].copy()
+bridge["genre_id"] = bridge["genre_flag"].str.removeprefix("genre_").astype(int)
+assert len(processed_ratings) == 100000
+assert len(bridge) == 2893
+print({"retained_ratings": len(processed_ratings), "missing_release_dates": int(release_dates.isna().sum()),
+       "movie_genre_pairs": len(bridge)})
+```
+
+这些操作各有目的：
+
+- 指定分隔符和编码，让字段按源格式进入正确列；不是读入后才凭感觉修数。
+- Unix 秒转带 UTC 的时间，再提取月份，让所有 SQL/Python 统计使用同一时区。
+- `errors="coerce"` 把缺失/不可解析日期显式变为空值，之后仍要区分原本缺失和非空解析失败；本源后者为 0。
+- `melt()` 将 19 列 0/1 标记变成电影与类型的关联行，只保留值为 1 的真实归属，不制造单一“主类型”。
+- 保留原包和本地 raw 表，以便追溯；分析使用规范后的表。本次没有删除评分，也没有填造评分和日期。
+
+这段没有保存行级结果，也不应该把 `raw_ratings` 或 `bridge` 的明细作为 GitHub 输出。
+
+### 4.3 用最简单的 SQL 核对事实表
+
+```sql
+SELECT COUNT(*) AS rating_count,
+       COUNT(DISTINCT user_id) AS scoring_users,
+       COUNT(DISTINCT movie_id) AS rated_movies,
+       AVG(rating) AS rating_mean
+FROM ratings;
+```
+
+```python
+overview = pd.read_sql_query("""
+SELECT COUNT(*) AS rating_count, COUNT(DISTINCT user_id) AS scoring_users,
+       COUNT(DISTINCT movie_id) AS rated_movies, AVG(rating) AS rating_mean
+FROM ratings
+""", conn)
+assert tuple(overview.iloc[0][["rating_count", "scoring_users", "rated_movies"]].astype(int)) == (100000, 943, 1682)
+print(overview.to_string(index=False))
+```
+
+`COUNT(*)` 数的是评分，`COUNT(DISTINCT user_id)` 才数用户；两个数不同不是异常，而是粒度不同。
+
+### 4.4 核对多对一关联是否丢行或倍增
+
+```python
+join_audit = pd.read_sql_query("""
+SELECT COUNT(*) AS joined_rows,
+       SUM(CASE WHEN m.movie_id IS NULL THEN 1 ELSE 0 END) AS unmatched_rows
+FROM ratings r LEFT JOIN movies m ON r.movie_id = m.movie_id
+""", conn)
+assert int(join_audit.iloc[0]["joined_rows"]) == 100000
+assert int(join_audit.iloc[0]["unmatched_rows"]) == 0
+print(join_audit.to_string(index=False))
+```
+
+为什么先 LEFT JOIN？它能保留找不到电影的评分，让关联缺失暴露出来。直接 INNER JOIN 后只看结果，可能把关联失败的记录静默丢掉。
+
+## 五、分析前把指标口径写清楚
+
+| 指标 | 计算方式 | 代表什么与注意点 |
+|---|---|---|
+| 月评分数 | 该月评分行数 | 样本中的评分提交量，不是播放量 |
+| 月评分用户数 | 该月去重用户数 | 提交过评分的人，不是平台 MAU |
+| 人均评分数 | 月评分数 ÷ 月评分用户数 | 每个评分参与者的平均提交量 |
+| 日均评分数 | 完整月评分数 ÷ 月日历天数 | 控制 28/30/31 天差异；没有记录的日历日也在分母中 |
+| Top 10% 评分份额 | 评分最多的前 `ceil(电影数×10%)` 部影片评分数 ÷ 全部评分数 | 描述评分记录集中程度；并列时用 movie_id 固定排序 |
+| 高分比例 | 4/5 星评分数 ÷ 该片全部评分数 | 不是全体观众满意度 |
+| 类型分摊评分份额 | 该类型分摊权重之和 ÷ 全部评分数 | 多类型影片按 `1/类型数` 分摊，可加总为 100% |
+| 收缩加权均分 | `(n×该片均分 + m×全局均分)/(n+m)` | 为低样本均分提供收缩，不是影片真实质量或显著性结论 |
+
+所有阈值先写明再看结果。本例把“长尾”操作性定义为评分数 ≤20 的影片，候选榜要求至少 30 条评分，收缩参考强度 `m=50`；这些是演示选择，不是行业标准或统计保证。
+
+## 六、分析一：月度变化来自参与人数还是人均提交量
+
+### 问题与方法
+
+如果某月评分数下降，你不能立刻断言内容表现下降。至少要拆成：
+
+```text
+月评分数 = 当月评分用户数 × 人均评分数
+```
+
+再考虑每个月天数不同。这里同时看月总量、人数、人均量和日均量，目的是区分不同来源，而不是只画一条折线就解释为增长或衰退。
+
+SQL 核心是先按月聚合；完整查询在 [analysis.sql](../sql/analysis.sql) 的 `monthly` 段：
+
+```sql
+SELECT rating_month,
+       COUNT(*) AS rating_count,
+       COUNT(DISTINCT user_id) AS scoring_users,
+       1.0 * COUNT(*) / COUNT(DISTINCT user_id) AS ratings_per_scoring_user,
+       AVG(rating) AS rating_mean
+FROM ratings
+GROUP BY rating_month
+ORDER BY rating_month;
+```
+
+### 操作与图表
+
+```python
+monthly = query("monthly")
+complete_months = monthly[monthly["is_partial_month"] == 0].copy()
+assert complete_months["rating_month"].tolist() == ["1997-10", "1997-11", "1997-12", "1998-01", "1998-02", "1998-03"]
+print(monthly.to_string(index=False))
+
 fig, axes = plt.subplots(2, 1, figsize=(10, 6), sharex=True)
-axes[0].plot(daily.index, daily["n"])
-axes[0].set_ylabel("Observed ratings / day")
-axes[1].plot(daily.index, daily["mean"])
-axes[1].set_ylabel("Mean observed rating")
+axes[0].plot(complete_months["rating_month"], complete_months["day_normalized_ratings"], marker="o")
+axes[0].set_ylabel("Ratings / calendar day")
+axes[1].plot(complete_months["rating_month"], complete_months["scoring_users"], marker="o")
+axes[1].set_ylabel("Distinct scoring users")
 fig.tight_layout()
-fig.savefig(OUTPUT / "development_trends.svg", metadata={"Date": None})
+fig.savefig(OUTPUT / "monthly_participation.svg", metadata={"Date": None})
 plt.show()
 ```
 
-不能把某天均分升高直接解释成“电影变好了”。至少还有用户组成、被评分电影组成和每天评分数不同这些替代解释。先在 Notebook Markdown 单元格写一个观察、两个解释，暂不下因果结论。
+| 完整月 | 评分数 | 评分用户数 | 人均评分 | 日历日均评分 |
+|---|---|---|---|---|
+| 1997-10 | 10,304 | 152 | 67.79 | 332.39 |
+| 1997-11 | 23,980 | 288 | 83.26 | 799.33 |
+| 1997-12 | 11,911 | 184 | 64.73 | 384.23 |
+| 1998-01 | 14,095 | 219 | 64.36 | 454.68 |
+| 1998-02 | 10,991 | 174 | 63.17 | 392.54 |
+| 1998-03 | 12,656 | 226 | 56.00 | 408.26 |
 
-**本节完成条件：** 产出 `audit.json` 和 `development_trends.svg`；解释为什么数据没有缺失，也不等于它代表所有用户。官方样本保留至少 20 条评分且人口信息完整的用户，本项目只读取评分。
+首月 1997-09 和末月 1998-04 只覆盖部分日期，不能把它们与完整月直接做增长比较。这里只把中间月份称为观测范围内的完整日历月；即使覆盖整月，也不代表抓到了平台全部行为。
 
----
+实际观察：1997-10 到 1997-11，月评分数从 10,304 增至 23,980（+132.7%）；评分用户从 152 增至 288（+89.5%），人均量从 67.79 增至 83.26（+22.8%）。人数和人均提交量都参与了记录量的增长；这只是恒等分解，不证明某个原因造成了增长。随后月份也不呈持续单向上升。
 
-## 第 3 步：理解时间切分和“未来信息”
+另一个需要追问的质量细节：1997-12 有 31 个日历日，但只有 29 天出现评分记录。日历日均仍以 31 为分母；另外两天没有记录，不能证明它们没有用户行为，也可能与采样或记录机制有关。
 
-打开 [data.py](../src/rating_lab/data.py) 的 `temporal_split()`。程序先排序，用大约 70% 和 85% 位置处的时间戳作边界，再用时间戳过滤。边界同一时刻的评分统一进入后一个集合，因此不是简单的三段 `iloc`。
+**如何形成建议：** 如果是在真实团队，先核查数据采集是否变化，再结合曝光、播放和活动日历排查参与变化；仅凭评分日志，不把下降归因于内容质量。这里不计算“用户流失率”：没再评分不等于不再使用平台。
 
-### 3.1 用断言检查，而不是凭感觉相信切分
+**你的检查：** 任选相邻两个完整月，比较总评分数、人数、人均量、日均量。写一句说明“哪个因素变化更明显”，再写一个替代解释。
+
+## 七、分析二：评分记录有多集中，长尾证据够不够
+
+### 为什么先聚合到一片一行
+
+要研究影片集中度，先把评分明细变成电影级表。若直接把每条评分当一个电影来排名，分析粒度已经错了。
+
+```sql
+WITH movie_counts AS (
+  SELECT movie_id, COUNT(*) AS rating_count
+  FROM ratings GROUP BY movie_id
+)
+SELECT movie_id, rating_count,
+       ROW_NUMBER() OVER (ORDER BY rating_count DESC, movie_id) AS count_rank,
+       SUM(rating_count) OVER (
+         ORDER BY rating_count DESC, movie_id ROWS UNBOUNDED PRECEDING
+       ) * 1.0 / SUM(rating_count) OVER () AS cumulative_share
+FROM movie_counts;
+```
+
+`ROW_NUMBER` 给每片稳定顺序；窗口累计和把“前若干部影片合计占多少评分”直接算出来。并列规则提前固定为 movie_id，避免阈值附近的结果每次变化。
+
+### 执行并用 Python 独立核对
 
 ```python
-assert train["timestamp"].max() < validation["timestamp"].min()
-assert validation["timestamp"].max() < test["timestamp"].min()
-assert len(train) + len(validation) + len(test) == len(ratings)
+concentration = query("concentration")
+counts = pd.read_sql_query("SELECT movie_id, COUNT(*) AS n FROM ratings GROUP BY movie_id", conn)
+top_n = int(np.ceil(len(counts) * 0.10))
+python_top = counts.sort_values(["n", "movie_id"], ascending=[False, True]).head(top_n)
+python_share = python_top["n"].sum() / counts["n"].sum()
+sql_share = float(concentration.iloc[0]["top10_rating_share"])
+assert np.isclose(python_share, sql_share)
+print(concentration.to_string(index=False))
 
-split_record = {}
-for name, part in [("train", train), ("validation", validation), ("test", test)]:
-    split_record[name] = {
-        "rows": int(len(part)),
-        "start_utc": pd.to_datetime(part["timestamp"].min(), unit="s", utc=True).isoformat(),
-        "end_utc": pd.to_datetime(part["timestamp"].max(), unit="s", utc=True).isoformat(),
-    }
-print(pd.DataFrame(split_record).T)
-save_json("split.json", split_record)
-```
-
-预期行数为 **69,997 / 15,003 / 15,000**。如果你得到 70,000 / 15,000 / 15,000，先确认是否把同一时间戳拆开了；不要把比例“更整齐”误认为实验更正确。
-
-### 3.2 弄懂什么阶段能使用什么统计量
-
-- 验证一个只用 `train` 拟合的模型时，新用户、新电影与流行度都以 `train` 为准。
-- 最终参数冻结后，允许 `train + validation` 重拟合；评价 `test` 时才以这 85,000 条为准。
-- 不能先从所有数据提取用户电影映射、评分均值和电影流行度，再假装训练时不知道未来。
-- 使用未来时间戳来确定离线评估的边界不同于使用未来评分来拟合；此处切分不根据评分值挑样本。
-
-**本节小练习：** 在一份本地临时数据上把 `validation.rating` 全改成 1，再运行 `temporal_split()`。边界应不受评分值影响。不要修改正式 `ratings` 或提交伪造数据。
-
-**完成条件：** 产出 `split.json`；能分别解释“随机划分模拟什么”和“时间划分模拟什么”，并知道本项目选了后者。
-
----
-
-## 第 4 步：手算三个模型，再读实现
-
-打开 [models.py](../src/rating_lab/models.py)。先看 `predict()` 的最后一行，再回头看 `fit()`，你会更容易理解每一步训练在为预测准备什么。
-
-记 `mu` 为训练评分均值，`b_u` 为用户偏置，`b_i` 为电影偏置。这里的“偏置”表示相对均分的偏移，不是社会公平意义上的歧视结论。
-
-| `mode` | 裁剪前的预测 | 学到什么 |
-|---|---|---|
-| `global` | `mu` | 所有记录使用同一个均分 |
-| `movie` | `mu + b_i` | 电影的平均偏高或偏低倾向 |
-| `user_movie` | `mu + b_u + b_i` | 同时考虑用户评分宽松程度与电影倾向 |
-
-预测都裁剪到 `[1, 5]`。`mu` 固定为本次拟合数据的均值；训练最小化**裁剪前**预测的残差平方和，加 `strength * sum(bias**2)`。这里不是先除以评分数的 MSE；改变数据量时，相同 `strength` 的相对收缩效果也会变化。
-
-### 4.1 一个能算清楚的电影偏置
-
-```python
-toy = pd.DataFrame({
-    "user_id": [1, 1, 2, 2],
-    "movie_id": [10, 20, 10, 20],
-    "rating": [5, 3, 4, 2],
-    "timestamp": [1, 2, 3, 4],
-})
-toy_model = BiasModel(mode="movie", strength=2).fit(toy)
-query = pd.DataFrame({"user_id": [1, 999, 999], "movie_id": [10, 20, 999]})
-toy_prediction = toy_model.predict(query)
-print(toy_prediction)
-assert np.allclose(toy_prediction, [4.0, 3.0, 3.5])
-```
-
-手算：全局均分是 `3.5`。电影 10 的残差为 `1.5` 和 `0.5`，所以偏置是 `(1.5 + 0.5) / (2 + 2) = 0.5`，预测 `4.0`；电影 20 的偏置是 `-0.5`；未知电影回退到 `3.5`。
-
-一般的电影更新公式为：
-
-```text
-b_i = sum(r_ui - mu - b_u) / (n_i + strength)
-b_u = sum(r_ui - mu - b_i) / (n_u + strength)
-```
-
-`user_movie` 交替更新两类偏置 20 次。`movie` 不更新用户偏置。`pd.factorize` 将训练 ID 变成紧凑整数位置，`np.bincount` 按这些位置计算计数和残差之和，最后又用真实 ID 建回映射。
-
-### 4.2 冷启动回退必须有定义
-
-| 当前记录 | `user_movie` 的裁剪前回退 |
-|---|---|
-| 用户和电影都见过 | `mu + b_u + b_i` |
-| 新用户、已见电影 | `mu + b_i` |
-| 已见用户、新电影 | `mu + b_u` |
-| 两者都新 | `mu` |
-
-**亲手修改：** 只在 toy 实验中把 `strength=2` 改成 `20`，观察电影偏置是否更接近 0，再改成 0。解释“收缩”减少了什么，也可能抹去了什么。不要通过删掉未知 ID 来提高指标。
-
-**完成条件：** 手算与代码一致；能找到代码中固定均值、交替更新、未知 ID 填 0、裁剪预测这四处实现。
-
----
-
-## 第 5 步：在验证集上比较和选参数
-
-先写评价目标，再计算成绩。RMSE 对大误差更敏感，MAE 更接近平均绝对偏差。本项目以 RMSE 为主要选择指标，MAE 为辅助诊断；看到结果后不能临时更换主指标来宣布某模型获胜。
-
-```text
-RMSE = sqrt(mean((真实评分 - 预测评分)^2))
-MAE  = mean(abs(真实评分 - 预测评分))
-```
-
-### 5.1 保留全部候选结果
-
-```python
-grid = [1.0, 5.0, 10.0, 25.0, 50.0]
-trials = []
-for mode in ["global", "movie", "user_movie"]:
-    strengths = [0.0] if mode == "global" else grid
-    for strength in strengths:
-        model = BiasModel(mode=mode, strength=strength).fit(train)
-        row = {"mode": mode, "strength": strength,
-               **metrics(validation["rating"], model.predict(validation))}
-        trials.append(row)
-
-trial_table = pd.DataFrame(trials)
-best_rows = trial_table.loc[trial_table.groupby("mode")["rmse"].idxmin()]
-selected = {row["mode"]: float(row["strength"]) for row in best_rows.to_dict("records")}
-dev_models = {mode: BiasModel(mode=mode, strength=value).fit(train)
-              for mode, value in selected.items()}
-dev_predictions = {mode: model.predict(validation) for mode, model in dev_models.items()}
-print(trial_table.to_string(index=False))
-print("Selected:", selected)
-save_json("validation_baselines.json", {"trials": trials, "selected": selected})
-```
-
-参考：`movie` 的最佳 `strength=5`，验证 RMSE 约 `1.0253`；`user_movie` 的最佳 `strength=1`，验证 RMSE 约 `1.0279`。**开发验证上，用户偏置模型并没有赢过电影偏置模型。** 这与初版测试集上的排序不同，正好用来学习“单次成绩”和“稳定规律”的区别。
-
-### 5.2 自己画一张参数曲线
-
-```python
-fig, ax = plt.subplots(figsize=(7, 4))
-for mode in ["movie", "user_movie"]:
-    rows = trial_table[trial_table["mode"] == mode]
-    ax.plot(rows["strength"], rows["rmse"], marker="o", label=mode)
-ax.set(xscale="log", xlabel="Regularization strength", ylabel="Validation RMSE")
+ordered = np.sort(counts["n"].to_numpy())
+x = np.r_[0, np.arange(1, len(ordered) + 1) / len(ordered)]
+y = np.r_[0, np.cumsum(ordered) / ordered.sum()]
+fig, ax = plt.subplots(figsize=(6, 5))
+ax.plot(x, y, label="Observed rating concentration")
+ax.plot([0, 1], [0, 1], "--", color="gray", label="Equal counts reference")
+ax.set(xlabel="Cumulative share of movies (least rated first)", ylabel="Cumulative share of ratings")
 ax.legend()
 fig.tight_layout()
-fig.savefig(OUTPUT / "regularization.svg", metadata={"Date": None})
+fig.savefig(OUTPUT / "concentration.svg", metadata={"Date": None})
 plt.show()
 ```
 
-### 5.3 做第一个单因素实验
+Python 和 SQL 都使用相同的 `rating_count DESC, movie_id ASC` 顺序；如果要比较具体影片名单，并列规则也必须一致，不能只核对最终百分比。
 
-先在 Markdown 单元格写下：“我预期收缩主要帮助训练评分少的电影。”然后固定 `mode="movie"`，只改变 `strength`；用 `train.movie_id.value_counts()` 将验证评分分成 0、1–20、21–100、>100 四组，再比较不同参数下的误差。
+本次结果：前 10%（向上取整为 **169 部**）影片获得 **42,871 / 100,000 = 42.87%** 的评分；前 20%（337 部）占 **64.72%**。≤20 条评分的电影有 **755 部，占目录影片 44.89%**，但合计只占评分 **5.27%**。
 
-第 6 步提供现成的分组函数，你完成那一步后可以回到这里重复实验。不要同时换数据划分、模型和正则化，否则无法说明差值来自哪里。
+这表示样本中的观测证据分布不均；不是对所有内容都拥有同等可靠的评分估计。
 
-**完成条件：** 产出全部候选表和参数曲线；能解释为什么不能根据当前测试成绩反过来决定选择哪个 `strength`。
+**能解释什么：** 哪些地方观测证据密集、哪些影片只有少量记录。**不能解释什么：** 观看流量分布、市场份额、平台应该给头部多少曝光。
 
----
+**建议与验证：** 形成候选名单时同时展示评分数；对小样本片不要仅看均分决定资源。若要发现“被低估的长尾”，还需要曝光和播放数据，分清“没人看见”与“看见但不喜欢”。
 
-## 第 6 步：区分开发诊断与最终重训
+## 八、分析三：多类型影片怎样比较，才不会重复算
 
-### 6.1 冻结参数，用 85,000 条重训
+### 先展示连接膨胀，而不是直接画类型排行榜
 
 ```python
-final_train = pd.concat([train, validation], ignore_index=True)
-assert len(final_train) == 85000
-final_models = {mode: BiasModel(mode=mode, strength=value).fit(final_train)
-                for mode, value in selected.items()}
-final_predictions = {mode: model.predict(test) for mode, model in final_models.items()}
-final_scores = {mode: metrics(test["rating"], pred) for mode, pred in final_predictions.items()}
-print(pd.DataFrame(final_scores).T)
+fanout = pd.read_sql_query("""
+SELECT COUNT(*) AS tagged_rating_rows
+FROM ratings r JOIN movie_genres g ON r.movie_id = g.movie_id
+""", conn)
+print(fanout.to_string(index=False))
 ```
 
-这一步复现已公开的测试比较：参数来自第 5 步，测试评分没有参与拟合。重训会重新计算 `mu` 和偏置，所以不要期待同一记录在 `dev_models` 和 `final_models` 下预测完全一样。
+类型关联把 **100,000 条评分**展开成 **212,595 行**。例如一条属于三个标签的影片评分，会出现三次。
 
-### 6.2 将覆盖率的分母写出来
+这是多标签展开的预期结果，不意味着数据突然多了那么多条独立评分。
 
-```python
-def coverage_record(fit_data, evaluation):
-    known_user = evaluation["user_id"].isin(fit_data["user_id"])
-    known_movie = evaluation["movie_id"].isin(fit_data["movie_id"])
-    unique_users = evaluation[["user_id"]].drop_duplicates()
-    return {
-        "evaluation_ratings": int(len(evaluation)),
-        "evaluation_unique_users": int(len(unique_users)),
-        "known_user_rating_fraction": float(known_user.mean()),
-        "known_movie_rating_fraction": float(known_movie.mean()),
-        "known_user_unique_user_fraction": float(unique_users["user_id"].isin(fit_data["user_id"]).mean()),
-        "known_user_ratings": int(known_user.sum()),
-        "both_known_rating_fraction": float((known_user & known_movie).mean()),
-    }
+### 两种口径回答不同问题
 
-coverage = {
-    "validation_given_train": coverage_record(train, validation),
-    "test_given_final_train": coverage_record(final_train, test),
-}
-print(pd.DataFrame(coverage).T)
-save_json("coverage.json", coverage)
-assert np.isclose(coverage["test_given_final_train"]["known_user_rating_fraction"], 2514 / 15000)
-assert np.isclose(coverage["test_given_final_train"]["known_user_unique_user_fraction"], 91 / 226)
-```
+- **全额计数：** 一部三类型电影的每条评分都计入三个类型。适合回答“带这个标签的影片一共获得多少评分”，但各类型计数相加会超过总评分。
+- **等比分摊：** 一条三类型电影评分给每个标签 `1/3`。适合描述一份可加总的类型结构。它是明确的记账假设，并不是证明观众的注意力平均分配给三个类型。
 
-**16.76% = 2,514 / 15,000，分母是评分条数；40.27% = 91 / 226，分母才是测试集的独立用户数。** 不能把前一个比例说成“只有 16.8% 的测试用户见过”。
+等比分摊的核心 SQL：
 
-在全局时间切分下，某人即使在整个数据里有 20 条以上评分，也可能全部提交于切分边界之后，因此在早期训练集里仍是新用户。评分提交常集中在一段时间内，这是需要核查的现象；不是仅凭此比例就能证明的机制。
-
-### 6.3 写一个能反复使用的分组函数
-
-```python
-def slice_scores(fit_data, evaluation, predictions):
-    movie_counts = evaluation["movie_id"].map(fit_data["movie_id"].value_counts()).fillna(0).to_numpy()
-    popularity = np.select(
-        [movie_counts == 0, movie_counts <= 20, movie_counts <= 100],
-        ["unseen", "tail (1-20)", "middle (21-100)"], default="head (>100)",
-    )
-    known_user = evaluation["user_id"].isin(fit_data["user_id"]).to_numpy()
-    known_movie = evaluation["movie_id"].isin(fit_data["movie_id"]).to_numpy()
-    masks = {label: popularity == label for label in
-             ["unseen", "tail (1-20)", "middle (21-100)", "head (>100)"]}
-    masks.update({
-        "both_known": known_user & known_movie,
-        "new_user_only": ~known_user & known_movie,
-        "new_movie_only": known_user & ~known_movie,
-        "both_new": ~known_user & ~known_movie,
-    })
-    rows = []
-    for label, mask in masks.items():
-        if not mask.any():
-            continue
-        for mode, prediction in predictions.items():
-            rows.append({"slice": label, "model": mode,
-                         "n_ratings": int(mask.sum()),
-                         "n_users": int(evaluation.loc[mask, "user_id"].nunique()),
-                         **metrics(evaluation.loc[mask, "rating"], np.asarray(prediction)[mask])})
-    return pd.DataFrame(rows)
-
-validation_slices = slice_scores(train, validation, dev_predictions)
-test_slices = slice_scores(final_train, test, final_predictions)
-print(validation_slices.to_string(index=False))
-save_json("cold_start_slices.json", {
-    "validation": validation_slices.to_dict("records"),
-    "published_test": test_slices.to_dict("records"),
-})
-```
-
-前四个流行度组彼此互斥，后四个冷启动组也彼此互斥，但两套分组相互重叠；不要把八组样本数相加当成总量。所有预测数组必须与 `evaluation` 的原始行顺序一致，不能单独排序或过滤后直接配对。
-
-现在可回到第 5.3 步，给不同 `strength` 重新生成验证预测，再传入本函数。一次只改变正则化强度。
-
-**完成条件：** 覆盖率两个分母都能算对；输出分组样本数与误差；能解释为什么总体误差改善不等于每个群体都改善。
-
----
-
-## 第 7 步：比较模型差值，而非只比较小数点
-
-打开 [bootstrap.py](../src/rating_lab/bootstrap.py)。同一个人的多条评分往往不独立，所以这里抽用户，再把抽中用户的全部评分一起带入；候选和基线始终使用相同的抽样。
-
-### 7.1 先在验证集上计算
-
-```python
-validation_comparison = paired_user_bootstrap(
-    y_true=validation["rating"],
-    reference_predictions=dev_predictions["movie"],
-    candidate_predictions=dev_predictions["user_movie"],
-    user_ids=validation["user_id"],
-    n_boot=2000, seed=42,
+```sql
+WITH genre_count AS (
+  SELECT movie_id, COUNT(*) AS k FROM movie_genres GROUP BY movie_id
 )
-print(validation_comparison)
-save_json("bootstrap_validation.json", validation_comparison)
-assert validation_comparison["delta_rmse"] > 0
+SELECT g.genre,
+       SUM(1.0 / k.k) AS weighted_count,
+       SUM(r.rating * 1.0 / k.k) / SUM(1.0 / k.k) AS weighted_rating_mean
+FROM ratings r
+JOIN movie_genres g ON r.movie_id = g.movie_id
+JOIN genre_count k ON r.movie_id = k.movie_id
+GROUP BY g.genre;
 ```
 
-差值定义为 `RMSE(user_movie) - RMSE(movie)`：负数才是候选更好。验证差值约 `+0.0026`；本节不要把初版测试区间抄过来代替验证比较。
-
-这里的验证集同时用于第 5 步的参数选择，因此本区间没有包含模型选择造成的不确定性，只作开发诊断，不能当作独立确认性的显著性证据。
-
-### 7.2 再核对已经公开的测试比较
+### 执行并核对可加总性
 
 ```python
-published_comparison = paired_user_bootstrap(
-    test["rating"], final_predictions["movie"], final_predictions["user_movie"],
-    test["user_id"], n_boot=2000, seed=42,
-)
-print(published_comparison)
-assert np.isclose(published_comparison["delta_rmse"], -0.0180234772, atol=1e-8)
+genre = query("genre")
+assert np.isclose(genre["weighted_count"].sum(), 100000)
+assert np.isclose(genre["weighted_share"].sum(), 1.0)
+print(genre.sort_values("weighted_share", ascending=False).to_string(index=False))
 ```
 
-参考测试差值 `-0.0180`，95% 百分位区间约 `[-0.0403, -0.0009]`。它条件于当前拟合模型、样本时期和按用户抽样的假设；不包含重训随机性、未来时间漂移，也未全面处理同一电影跨用户造成的依赖。区间没有跨 0 不等于收益足够大；跨 0 也不等于证明两模型相同。
+| 类型 | 带该标签的影片数 | 全额关联评分行 | 分摊评分份额 | 分摊加权均分 | 电影等权均分 |
+|---|---|---|---|---|---|
+| Drama | 725 | 39,895 | 24.61% | 3.683 | 3.187 |
+| Comedy | 505 | 29,832 | 18.29% | 3.350 | 3.001 |
+| Action | 251 | 25,589 | 9.59% | 3.423 | 2.966 |
+| Thriller | 251 | 21,872 | 9.40% | 3.496 | 3.137 |
+| Romance | 247 | 19,461 | 8.10% | 3.582 | 3.244 |
 
-### 7.3 区分“用户抽样单位”和“指标权重”
+上表按分摊评分份额取前五类，不是按最高均分挑选。所有 19 个类型均包含在聚合结果中；unknown 未删除。
 
-这个函数虽然抽用户，但每次仍把抽中用户的评分残差加在一起算 RMSE，因此活跃用户仍贡献更多记录。它不是“每位用户 RMSE 的简单平均”。亲手比较两种目标：
+这里实际有三种均值，要与输出字段一一对应：
 
-```python
-error_frame = validation[["user_id"]].copy()
-error_frame["squared_error"] = (validation["rating"].to_numpy() - dev_predictions["movie"]) ** 2
-rating_weighted_rmse = float(np.sqrt(error_frame["squared_error"].mean()))
-mean_user_rmse = float(np.sqrt(error_frame.groupby("user_id")["squared_error"].mean()).mean())
-print({"rating_weighted_rmse": rating_weighted_rmse, "mean_user_rmse": mean_user_rmse})
-```
+- `rating_mean`：标签内每条评分等权，评分多的影片贡献更大。
+- `weighted_rating_mean`：每条评分按 `1/该片类型数` 计权；多类型片在每个标签里贡献更少。
+- `equal_movie_weight_mean`：先算每片均分，再在类型内对电影等权，描述样本中“典型一部片”的平均反馈。
 
-这两个量回答不同问题；不要根据哪个更好看临时换评价目标。
+它们回答不同问题，数值不一样不代表谁算错。前面表格同时展示分摊均分和电影等权均分，完整聚合表保留三种口径。
 
-**完成条件：** 写出差值方向、抽样单位、指标权重和区间未覆盖的风险各一句；解释验证排序和测试排序相反为何不能靠挑一个结果解决。
+**解释边界：** 类型标签互相重叠，用户选择看什么、是否评分也不同。因此类型间均分差异是描述性结果，不能说某类型导致满意度更高。类型独立用户数也不能跨类型相加。
 
----
+**建议与验证：** 将类型评分结构与实际内容目录、曝光结构对照，找值得调查的差异。若没有曝光和播放分母，不能用评分份额推断供需缺口。
 
-## 第 8 步：用滚动窗口检查结论是否稳定
+## 九、分析四：高分榜为什么不能只按平均分排序
 
-这里先固定两种模型都用 `strength=5`，不在每个评价窗口调参，目的是隔离比较“增加用户偏置”的影响。你可以另做内层验证调参实验，但不能用当前外层评价窗口选择参数。
+### 问题在哪里
 
-```python
-dev_sorted = development.sort_values("timestamp", kind="stable").reset_index(drop=True)
-rolling_rows = []
-for fraction in [0.4, 0.6, 0.8]:
-    cutoff = int(dev_sorted.iloc[int(len(dev_sorted) * fraction)]["timestamp"])
-    end = cutoff + 14 * 24 * 60 * 60
-    rolling_train = dev_sorted[dev_sorted["timestamp"] < cutoff]
-    rolling_eval = dev_sorted[(dev_sorted["timestamp"] >= cutoff) & (dev_sorted["timestamp"] < end)]
-    if rolling_train.empty or rolling_eval.empty:
-        continue
-    row = {
-        "cutoff_utc": pd.to_datetime(cutoff, unit="s", utc=True).isoformat(),
-        "last_rating_utc": pd.to_datetime(rolling_eval["timestamp"].max(), unit="s", utc=True).isoformat(),
-        "n_train": int(len(rolling_train)), "n_evaluation": int(len(rolling_eval)),
-        **coverage_record(rolling_train, rolling_eval),
-    }
-    for mode in ["movie", "user_movie"]:
-        rolling_model = BiasModel(mode=mode, strength=5).fit(rolling_train)
-        row[mode + "_rmse"] = metrics(rolling_eval["rating"], rolling_model.predict(rolling_eval))["rmse"]
-    row["delta_rmse"] = row["user_movie_rmse"] - row["movie_rmse"]
-    rolling_rows.append(row)
+1 条 5 星评分和 200 条平均 4.3 星评分，虽然前者均分高，但证据量不同。简单按均分排榜容易让低样本极端值占据前列。
 
-assert len(rolling_rows) == 3
-print(pd.DataFrame(rolling_rows).to_string(index=False))
-save_json("rolling_validation.json", rolling_rows)
-```
+本例使用两个明确的分析规则：
 
-每个窗口最多评价之后 14 天，数据末端可能使窗口变短，必须保留实际结束时间和样本数。窗口全部来自前 85% 开发数据，不触碰末段测试评分。
+1. 候选至少有 30 条评分，减少极低样本条目。
+2. 在榜单中同时展示原均分、评分数、4/5 星占比和收缩分，不把一个综合数当作全部证据。
 
-先回答三个问题，再写结论：差值方向是否一致？新用户评分比例是否变化？评分数相差很大的窗口是否同样可靠？这些窗口可能共享用户和电影，甚至重叠评分，并非独立重复实验，不能简单当作三份独立样本求显著性。
-
-**完成条件：** 生成三个窗口的记录；如果优势反转，保留结果并分析适用范围，不通过换窗口把失败藏掉。
-
----
-
-## 第 9 步：选做进阶——从偏置模型走到矩阵分解
-
-完成前面的分析后再做这一节。偏置只能表达“用户普遍打分高”“电影普遍得分高”；矩阵分解增加用户向量 `p_u` 和电影向量 `q_i`，用内积表达用户与电影之间的交互：
+### 为什么用收缩加权均分
 
 ```text
-prediction = mu + b_u + b_i + dot(p_u, q_i)
+收缩分 = (n × 该片均分 + m × 全局评分均值) / (n + m)
 ```
 
-下面是可运行的教学版本：先冻结已训练的用户电影偏置，再学习残差的低秩交互。它**不是**联合优化偏置和向量的完整 SVD 实现；把差异说清楚，比只贴一个模型名字更重要。
+`n` 是该片评分数，`m` 是我们给全局均分的参考权重。`n` 小时收缩更明显，`n` 大时更接近该片原均分。本例先固定 `m=50`，再用 `20/50/100` 检查结论是否依赖单一选择。
 
-### 9.1 在 Notebook 新单元格运行模型定义
+这是收缩估计风格的平滑排序，不是显著性检验、置信区间或电影真实质量。30 条与 `m=50` 都是透明的操作选择，不能包装成经过证明的最佳参数。
+
+SQL 的核心计算是：先按片聚合 `COUNT/AVG`，另算全局均分，再应用上述公式，最后用窗口函数排名。完整 SQL 见 `movie_candidates` 段。
 
 ```python
-class ResidualMF:
-    def __init__(self, factors=8, epochs=10, learning_rate=0.005,
-                 regularization=0.05, bias_strength=5.0, seed=42):
-        self.factors = factors
-        self.epochs = epochs
-        self.learning_rate = learning_rate
-        self.regularization = regularization
-        self.bias_strength = bias_strength
-        self.seed = seed
-
-    def fit(self, frame):
-        self.baseline = BiasModel(mode="user_movie", strength=self.bias_strength).fit(frame)
-        self.users = {value: index for index, value in enumerate(frame["user_id"].unique())}
-        self.movies = {value: index for index, value in enumerate(frame["movie_id"].unique())}
-        u = frame["user_id"].map(self.users).to_numpy(dtype=int)
-        i = frame["movie_id"].map(self.movies).to_numpy(dtype=int)
-        y = frame["rating"].to_numpy(dtype=float)
-        # 训练目标使用未裁剪的偏置预测，保持模型定义一致。
-        offset = (self.baseline.mean_
-                  + frame["user_id"].map(self.baseline.user_bias_).fillna(0).to_numpy()
-                  + frame["movie_id"].map(self.baseline.movie_bias_).fillna(0).to_numpy())
-        rng = np.random.default_rng(self.seed)
-        self.P = rng.normal(0, 0.05, (len(self.users), self.factors))
-        self.Q = rng.normal(0, 0.05, (len(self.movies), self.factors))
-        self.loss_history = []
-        for epoch in range(self.epochs):
-            for index in rng.permutation(len(frame)):
-                uid, mid = u[index], i[index]
-                p, q = self.P[uid].copy(), self.Q[mid].copy()
-                error = y[index] - offset[index] - p @ q
-                self.P[uid] += self.learning_rate * (error * q - self.regularization * p)
-                self.Q[mid] += self.learning_rate * (error * p - self.regularization * q)
-            prediction = offset + np.sum(self.P[u] * self.Q[i], axis=1)
-            objective = (0.5 * np.sum((y - prediction) ** 2)
-                         + 0.5 * self.regularization
-                         * (np.sum(np.bincount(u)[:, None] * self.P ** 2)
-                            + np.sum(np.bincount(i)[:, None] * self.Q ** 2)))
-            self.loss_history.append(float(objective))
-            if not np.isfinite(objective):
-                raise ValueError("MF diverged; reduce the learning rate")
-        return self
-
-    def predict(self, frame):
-        offset = (self.baseline.mean_
-                  + frame["user_id"].map(self.baseline.user_bias_).fillna(0).to_numpy()
-                  + frame["movie_id"].map(self.baseline.movie_bias_).fillna(0).to_numpy())
-        u = frame["user_id"].map(self.users).fillna(-1).to_numpy(dtype=int)
-        i = frame["movie_id"].map(self.movies).fillna(-1).to_numpy(dtype=int)
-        known = (u >= 0) & (i >= 0)
-        interaction = np.zeros(len(frame))
-        interaction[known] = np.sum(self.P[u[known]] * self.Q[i[known]], axis=1)
-        return np.clip(offset + interaction, 1, 5)
+candidates = query("movie_candidates")
+top = candidates.sort_values("shrunk_rank").head(10)
+print(top[["title", "rating_count", "raw_mean", "high_rating_ratio", "shrunk_mean", "shrunk_rank"]].to_string(index=False))
+first = top.iloc[0]
+recalculated = (first["rating_count"] * first["raw_mean"] + first["prior_strength"] * first["global_mean"]) / (first["rating_count"] + first["prior_strength"])
+assert np.isclose(recalculated, first["shrunk_mean"])
 ```
 
-每条记录的目标是 `0.5 * error**2 + 0.5 * regularization * (||p_u||² + ||q_i||²)`。每出现一条评分都施加一次收缩，因此上面总目标中的正则项按实体的训练出现次数加权。这个实现的正则化约定与第 4 步偏置模型不同，参数数值不能直接横比。
+| 收缩排名 | 影片 | 评分数 | 原均分 | 收缩分 | 4/5 星比例 |
+|---|---|---|---|---|---|
+| 1 | Schindler's List (1993) | 298 | 4.466 | 4.332 | 88.9% |
+| 2 | Shawshank Redemption, The (1994) | 283 | 4.445 | 4.308 | 90.1% |
+| 3 | Casablanca (1942) | 243 | 4.457 | 4.299 | 88.9% |
+| 4 | Star Wars (1977) | 583 | 4.358 | 4.293 | 85.9% |
+| 5 | Usual Suspects, The (1995) | 267 | 4.386 | 4.251 | 86.9% |
 
-更新前复制 `p`、`q`，确保两条更新使用同一步的旧向量。新用户或新电影没有可学习的交互向量，只用已知偏置回退，不能将未知 ID `-1` 当作矩阵最后一行取值。
+本次共有 806 部影片达到 30 条门槛，全局均分为 3.52986。例如 A Close Shave 的原均分约 4.491、112 条评分，m=50 后约 4.194；Schindler's List 的原均分约 4.466、298 条评分，收缩后约 4.332。排序改变反映样本量与规则的影响，不能由此断言哪部片客观更好。
 
-### 9.2 先做小规模检查，再训练真实数据
+### 接着检查榜单是否稳定
 
 ```python
-mf_toy = ResidualMF(factors=2, epochs=3, seed=42).fit(toy)
-assert np.isfinite(mf_toy.predict(query)).all()
-assert np.all((mf_toy.predict(query) >= 1) & (mf_toy.predict(query) <= 5))
-assert np.isclose(mf_toy.predict(query)[2], mf_toy.baseline.mean_)
-mf_toy_again = ResidualMF(factors=2, epochs=3, seed=42).fit(toy)
-assert np.allclose(mf_toy.predict(query), mf_toy_again.predict(query))
-print("MF toy checks passed")
+sensitivity = query("sensitivity")
+top_sets = {int(m): set(rows["movie_id"]) for m, rows in sensitivity.groupby("prior_strength")}
+overlap_rows = []
+for left, right in [(20, 50), (50, 100), (20, 100)]:
+    shared = len(top_sets[left] & top_sets[right])
+    overlap_rows.append({"left_m": left, "right_m": right,
+                         "shared_top20": shared,
+                         "jaccard": shared / len(top_sets[left] | top_sets[right])})
+print(pd.DataFrame(overlap_rows).to_string(index=False))
 ```
 
-### 9.3 用验证集进行一次预算受限的比较
+| 参考强度对比 | Top20 共同影片 | Jaccard（交集/并集） |
+|---|---|---|
+| 20 vs 50 | 19 / 20 | 90.48% |
+| 20 vs 100 | 17 / 20 | 73.91% |
+| 50 vs 100 | 18 / 20 | 81.82% |
 
-```python
-from time import perf_counter
+这是名单集合的交集，不说明共同影片排名顺序相同。m=20 与 m=100 有 17 部共同影片，也意味着有边缘候选会随收缩强度变化。
 
-mf_rows = []
-for factors in [4, 8]:
-    start = perf_counter()
-    mf = ResidualMF(factors=factors, epochs=10,
-                    bias_strength=selected["user_movie"], seed=42).fit(train)
-    pred = mf.predict(validation)
-    mf_rows.append({"factors": factors, "epochs": 10, "seed": 42,
-                    "learning_rate": 0.005, "regularization": 0.05,
-                    "bias_strength": selected["user_movie"],
-                    "seconds": perf_counter() - start,
-                    "parameters": int(mf.P.size + mf.Q.size),
-                    "training_objective": mf.loss_history,
-                    **metrics(validation["rating"], pred)})
-print(pd.DataFrame([{k: v for k, v in row.items() if k != "training_objective"} for row in mf_rows]))
-save_json("mf_validation.json", mf_rows)
-```
+这检验的是**分析选择的敏感性**，不是独立样本上的验证。名单稳定也不能证明上线有效；不稳定则提醒你：边缘候选不该被当作确定结论。
 
-这段纯 NumPy 教学代码在 Python 循环里做 SGD，比优化过的库慢。先只跑这两个配置；更改维度、学习率、正则化时一次改变一个因素，再用预定的小搜索预算比较，不要无休止地追逐测试集成绩。
+**本节练习：** 复制 SQL 到本地另做两个版本，把最少评分数从 30 改成 20、50，比较候选集合和排除的影片数。明确记录改了什么；不要在看到最喜欢的电影上榜后才挑一个阈值。
 
-**结果怎么解释：** 如果 MF 没赢，检查训练目标是否下降、是否过拟合、新用户是否太多、交互项是否需要更长训练。不要直接断言“矩阵分解无效”，也不要为了让它赢而删掉冷启动评分。
+## 十、从结果走到结论，再走到有条件的建议
 
-**本节提交任务：** 理解后把类移到 `src/rating_lab/mf.py`。模块顶部补上 `import numpy as np` 和 `from .models import BiasModel`，因为独立模块不会继承 Notebook 的导入。随后在 Notebook 中用 `from rating_lab.mf import ResidualMF` 替换原类定义，重启内核并重跑 toy 检查与真实验证。
-
-补充小数据、未知 ID、范围和重复性测试；验证至少两个维度并保留失败结果。若要把它接入正式 CLI，先读第 10 步的调用链，再另做一次可审查的代码修改。教程本身不会自动改动生产模型或报告。
-
----
-
-## 第 10 步：把分析做成可以维护的工程
-
-### 10.1 按调用顺序读代码
+不要用“发现头部集中，建议优化推荐”这种缺少中间证据的句子。每条结论都按以下顺序写：
 
 ```text
-python -m rating_lab run
-    └─ __main__.py: main() 解析命令参数
-        └─ pipeline.py: run()
-            ├─ data.py: load_ratings() 获取并核验数据
-            ├─ data.py: temporal_split() 划分时间段
-            ├─ models.py: BiasModel.fit()/predict() 做验证搜索
-            ├─ 参数冻结，train+validation 重拟合
-            ├─ bootstrap.py: paired_user_bootstrap() 比较误差
-            └─ pipeline.py: make_figures()/write_report() 写聚合结果
+现象（数字与分母）
+→ 有限解释（数据支持什么）
+→ 替代解释（还有什么可能造成这个现象）
+→ 行动候选（具体准备尝试什么）
+→ 验证计划（要补哪些数据、怎样判断成败）
 ```
 
-先在这些函数旁写自己的阅读笔记。不要逐行注释“这行加 1”，而应说明输入输出、关键假设和为什么不能改顺序。
+| 实证观察 | 有限解释与替代解释 | 行动候选 | 还需什么验证 |
+|---|---|---|---|
+| 10→11 月评分用户 152→288，人均 67.79→83.26 | 记录量增长同时伴随人数与人均提交量增加；可能受样本组成和记录方式影响 | 先核查记录范围与参与机制，不直接归因于内容改善 | 活动日历、数据采集变更与曝光/播放日志 |
+| 前169部占评分42.87%；755部长尾只占5.27% | 评分证据集中；小样本片的均分更容易波动 | 榜单同时展示量与分，不只按均分决策 | 曝光、观看及评价提交率，区分未被看见与反馈较低 |
+| Drama/Comedy 分摊评分份额约24.61%/18.29% | 描述本样本的类型记录结构，不是市场需求；标签和目录构成也会影响份额 | 将评分结构与内容供给、曝光结构一起检查 | 同口径的目录、曝光和播放分母 |
+| m20与m100的Top20共同17部 | 部分边缘候选依赖分析规则；名单稳定也不等于上线有效 | 将稳定且量足的对象列为编辑复核候选，记录边缘项 | 内容可用性、业务目标和预设的线上对照实验 |
 
-### 10.2 读懂现有 12 项测试
+这些建议并不是“分析出了一个数，所以应该上线”。例如候选榜仅帮助筛出值得编辑复核的对象；是否增加曝光，仍要结合内容可用性、业务目标和实验结果。
 
-打开 [test_core.py](../tests/test_core.py)，把测试分为：时间边界与同戳、基线与冷启动、评分范围与不读 holdout 标签、成对用户簇重采样与固定种子。
+若未来确实拿到线上数据，可以预先设计对照实验，衡量曝光后的播放、完播等预定指标，并考虑随机化、实验单位和负向影响。这里没有这些数据，所以不预写提升幅度。
 
-在 Notebook 中人为修改一个临时预测的评分标签，观察 `predict()` 是否变化；它不应读取评价集标签。若你实现 MF，优先测未知 ID 和小数据更新，不要只测试“某条真实数据 RMSE 小于一个神奇数字”。
+## 十一、把整条过程写成一份分析报告
 
-终端验证命令：
-
-```powershell
-.\.venv\Scripts\python.exe -m unittest discover -s tests -v
-```
-
-仓库的 GitHub Actions 在 Linux 和 Windows、Python 3.12 下安装项目并运行这些测试。**当前 CI 不下载真实数据、不执行整条分析流程，也不替代你对新实验的解释。** 新增 `mf.py` 后若没有写新测试，CI 绿色也不能证明 MF 已被验证。
-
-### 10.3 确认提交边界
-
-只发布聚合审计、聚合误差和原创说明；原包、行级评分、逐用户预测、训练向量不要入库。`data/` 已在 `.gitignore` 中，但 Notebook 输出仍需自己清理，不能以为 Git 忽略目录就能过滤单元格输出。当前单用户级 `error_frame` 仅用于本地计算，不保存明细。
-
-**完成条件：** 你的新代码有相应边界验证；别人按 README 可运行；提交中没有原始数据、行级输出或模型参数。
-
----
-
-## 第 11 步：写出属于你的项目报告
-
-建立 `docs/MY_FINDINGS.md`，按下面结构填你实际观察到的结果。不要复制预期当结论，也不要用“模型效果很好”代替数字和适用范围。
+先用自己的话写 `docs/MY_ANALYSIS.md`，结构如下：
 
 ```markdown
-# 我的电影评分分析
+# MovieLens 内容评分分析
 
-## 1. 问题和评价目标
-我预测什么？主要指标是什么？改进多大才值得进一步研究？
+## 1. 分析背景和问题
+模拟谁的需求？四个具体问题是什么？
 
-## 2. 数据和实验协议
-数据版本/哈希、时间边界、训练/验证/最终重训范围、参数搜索预算。
+## 2. 数据来源和分析范围
+官方来源、固定版本、粒度、UTC时间范围、用户筛选规则、缺失的业务数据。
 
-## 3. 基线和开发结果
-记录全部候选。验证和公开测试是否给出了相同排序？
+## 3. 数据检查与处理
+每条规则的理由、实际发现、处理决定、处理前后数量；是否改变评分总数。
 
-## 4. 群体差异
-新用户、新电影、冷门电影分别怎样？分母是评分还是用户？
+## 4. 指标与方法
+分子分母、完整月、Top比例与并列规则、多标签分摊、候选门槛、收缩公式。
 
-## 5. 不确定性和跨时期表现
-比较差值、区间、滚动窗口；区间未覆盖哪些风险？
+## 5. 分析结果
+每个问题配一张表/图、一条有数字的观察、一条替代解释。
 
-## 6. 进阶实验（若完成）
-MF的具体定义、验证结果、随机种子、时间成本、失败分析。
+## 6. 结论、建议与验证
+把证据和行动候选分开；明确下一步需要哪些数据。
 
-## 7. 结论与下一步
-哪些观察支持假设，哪些反驳？能推广到哪里？下一次只改变什么？
-
-## 8. 复现
-提交号、Python/依赖版本、命令、聚合结果路径。
+## 7. 限制与复现
+样本选择、年代、主动评分、参数敏感性；代码版本、SQL文件和运行方式。
 ```
 
-### 11.1 将完整学习过程提交到自己的分支
+完成手动分析后，再运行整条自动流程，对照你的结果：
 
-完成上面的 `MY_FINDINGS.md` 后，在 `MovieLensRatingLab` 项目目录执行以下终端命令；首次创建分支时使用一个尚不存在的名字：
-
-```powershell
-git switch -c learn/movielens-analysis
-git status
-# Notebook 里先 Clear Outputs，再保存，防止提交行级数据或残留输出。
-git add notebooks/01_explore.ipynb reports/learning docs/MY_FINDINGS.md
-git diff --cached --stat
-git diff --cached --check
-git commit -m "analysis: document temporal rating experiments and findings"
-git push -u origin learn/movielens-analysis
+```python
+evidence = {name: json.loads(frame.to_json(orient="records")) for name, frame in {
+    "monthly": monthly,
+    "concentration": concentration,
+    "genre": genre,
+    "top30_candidates": candidates.sort_values("shrunk_rank").head(30),
+    "sensitivity": sensitivity,
+    "top20_overlap": pd.DataFrame(overlap_rows),
+}.items()}
+(OUTPUT / "evidence.json").write_text(
+    json.dumps(evidence, ensure_ascii=False, indent=2) + "\n", encoding="utf-8",
+)
+conn.close()
+reference_result = run_analysis(PROJECT / "data", PROJECT / "reports/analyst")
 ```
 
-只提交你确实完成的内容；实现 MF 时另选 `src/rating_lab/mf.py` 和相关测试加入提交。若分支已存在，使用 `git switch learn/movielens-analysis`，不必再次 `-c`。推送后在 GitHub 比较这个分支与 `main`，通过 Pull Request 展示你新增的实验和解释。
+先保存自己的聚合证据，再关闭原连接，最后重新运行参考流程；Windows 下不能让旧连接占用着数据库文件时替换它。
 
-### 11.2 完成整个项目的验收表
+自动参考：[分析报告](../reports/analyst/ANALYSIS_REPORT.md)、[聚合指标](../reports/analyst/metrics.json)、[质量审计](../reports/analyst/audit.json)。这些文件方便核对数值，不代替你解释为什么选这些方法。
 
-- [ ] 重启内核后，从头运行 Notebook 不报错。
-- [ ] 数据审计、时间切分、全部验证候选、分组误差都有可复核产物。
-- [ ] 能手算一个电影偏置，并解释未知 ID 如何回退。
-- [ ] 能正确区分 16.76% 的评分覆盖率和 40.27% 的用户覆盖率。
-- [ ] 验证阶段的分组用 `train`，测试阶段的分组用 `final_train`。
-- [ ] bootstrap 差值方向、抽样单位、指标权重解释清楚。
-- [ ] 完成三个滚动窗口；失败或反转的结果也保留。
-- [ ] 如完成 MF，记录实现约定、搜索预算、成本与新测试。
-- [ ] 新结论未把已经公开的测试集说成从未看过的独立确认数据。
-- [ ] 报告写出了你自己的解释、反例和限制，而非仅展示图表。
-- [ ] 测试通过；提交内容没有原始数据和行级明细。
+### 面向求职，怎样讲这个项目
 
-达到这些条件，你展示的就是一个可复现、可解释、有实验过程的数据分析项目。模型没有赢，也可以是一份合格而有价值的结果。
+在你实际完成并能复现后，可以这样概括：
 
----
+> 我用 MovieLens 公开历史数据完成了一个内容评分分析案例。先明确数据粒度和指标边界，审计十万条评分并建立电影维表、类型桥表；用 SQL 做月度参与、集中度和多标签分摊，用 Python 独立核对和可视化；再用样本门槛与收缩排序检查口碑候选的稳定性。结论区分评分行为与观看行为，并给出需要曝光和播放数据才能验证的后续方案。
 
-## 卡住时按这里排查
+不要把公开练习说成真实企业项目，也不要写“带来收入增长 X%”。求职作品的说服力来自分析过程可解释、口径可靠和建议有依据。
 
-| 现象 | 先检查什么 | 处理方式 |
-|---|---|---|
-| `No module named rating_lab` | Notebook 内核与安装用的 Python 是否一致 | 回到 0.2 和 1.1，选择命名内核；确认 `rating_lab.__file__` |
-| PowerShell 不识别 Python 语法 | 是否把 `python` 代码块粘进终端 | Python 块放 Notebook；终端只运行 `powershell` 块 |
-| `NameError` | 是否跳过前面的单元格或重启过内核 | 从第 1.2 步顺序运行；不要靠重复定义同名变量补洞 |
-| 图和 JSON 保存到奇怪目录 | 是否自己改成相对路径 | 保留 `OUTPUT = PROJECT_ROOT / "reports" / "learning"` |
-| 下载或证书错误 | 网络和系统证书是否正常 | 下载器在 Windows 会尝试系统证书方案；保留 TLS 校验，不修改校验和 |
-| 缓存哈希不符 | `data/ml-100k.zip` 是否完整或被改动 | 只删除这个已确认的缓存文件，然后重新下载；不要清空整个项目 |
-| 评分数切分不等于整数百分比 | 是否存在边界同时间戳 | 以严格时间顺序为准，核对 69,997/15,003/15,000 |
-| 16.8% 对不上 | 是否混用了 train/final_train 或评分/用户分母 | 对照第 6.2 步分别计算两种覆盖率 |
-| MF 很慢或目标发散 | 是否扩大搜索、学习率过大 | 先跑 toy，再用两个小配置；目标不有限时减小学习率 |
-| 无法向仓库推送 | Git 登录账户、权限、分支是否正确 | 查看 `git remote -v` 和 `git status`，按 GitHub 正常登录流程处理 |
+## 十二、怎样判断你真的学会了
 
-## 数据来源与引用
+- [ ] 能解释数据来自哪里，为什么选择它，以及它不代表谁。
+- [ ] 能说清评分事实表、电影维表、类型桥表的粒度和关联关系。
+- [ ] 每项清洗都有理由和数量记录，没有为了展示技巧随意删数据。
+- [ ] 不把评分用户数叫平台 MAU，不把评分数叫播放量。
+- [ ] 首尾部分月份没有被拿来直接解释增长或衰退。
+- [ ] 能用人数与人均提交量拆解月度变化。
+- [ ] SQL 集中度结果能用 Python 独立复算。
+- [ ] 能解释多标签展开后的行数变化，并核对分摊权重恢复到十万。
+- [ ] 能手算收缩分，并说明它为什么不是显著性证据。
+- [ ] 改过至少一个样本门槛，记录了榜单和结论的变化。
+- [ ] 每条建议都有数字、替代解释、适用范围和验证方式。
+- [ ] 能从源包重新生成结果，并用自己的话讲述整条过程。
 
-数据与许可：[GroupLens MovieLens 100K](https://grouplens.org/datasets/movielens/100k/)、[官方 README](https://files.grouplens.org/datasets/movielens/ml-100k-README.txt)。源数据适用其单独条款，本项目 MIT 许可不覆盖它。
+## 附录：运行和文件入口
 
-F. Maxwell Harper and Joseph A. Konstan. 2015. *The MovieLens Datasets: History and Context*. ACM TIIS 5(4), Article 19. [DOI: 10.1145/2827872](https://doi.org/10.1145/2827872).
+主线代码：`src/rating_lab/analyst.py`；完整 SQL：`sql/analysis.sql`；可执行工作区：`notebooks/01_explore.ipynb`。
+
+已能导入 numpy、pandas、matplotlib 时可直接按第 4 节运行。若缺少包，在你当前使用的 Python 环境安装项目依赖：`python -m pip install -e .`。整条参考流程可用 `python -m rating_lab.analyst` 运行；这只是复现方式，不是学习顺序。
+
+SQLite 的日期表达式与 MySQL/SQL Server 不完全相同。例如 SQLite 常用 `strftime`，MySQL 常用 `DATE_FORMAT`；迁移时保持字段粒度、时区、NULL 处理和分母一致，不是只改函数名字。
+
+原来的评分预测代码与基线报告仍作为可选技术扩展保留，不属于这次岗位分析主线。
+
+数据使用 GroupLens 的单独许可，代码许可不覆盖源数据。GitHub 只放代码、原创说明和聚合结果，不提交原包、数据库、行级评分、逐用户输出；Notebook 发布前清空输出。
+
+引用：F. Maxwell Harper and Joseph A. Konstan. 2015. *The MovieLens Datasets: History and Context*. ACM TIIS 5(4), Article 19. [DOI: 10.1145/2827872](https://doi.org/10.1145/2827872).

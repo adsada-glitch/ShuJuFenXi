@@ -1,0 +1,54 @@
+{
+  "source_url": "https://files.grouplens.org/datasets/movielens/ml-100k.zip",
+  "source_sha256": "50d2a982c66986937beb9ffb3aa76efe955bf3d5c6b761f4e3a7cd717c6a3229",
+  "ratings": {
+    "rows": 100000,
+    "missing_cells": 0,
+    "duplicate_user_movie_pairs": 0,
+    "out_of_range_ratings": 0,
+    "unique_users": 943,
+    "unique_movies": 1682,
+    "global_mean": 3.52986,
+    "first_utc": "1997-09-20T03:05:10+00:00",
+    "last_utc": "1998-04-22T23:10:38+00:00"
+  },
+  "movies": {
+    "rows": 1682,
+    "duplicate_movie_ids": 0,
+    "missing_titles": 0,
+    "duplicate_title_groups": 18,
+    "rows_with_duplicate_titles": 36,
+    "duplicate_title_extra_rows": 18,
+    "missing_release_dates": 1,
+    "unparseable_nonempty_release_dates": 0,
+    "missing_video_release_dates": 1682,
+    "missing_imdb_urls": 3,
+    "invalid_genre_flag_cells": 0,
+    "movies_with_multiple_genres": 849,
+    "movies_without_genre_flags": 0,
+    "unknown_genre_movies": 2
+  },
+  "integrity": {
+    "orphan_rating_movie_ids": 0,
+    "orphan_rating_user_ids": 0,
+    "duplicate_genre_ids": 0,
+    "duplicate_user_ids": 0,
+    "duplicate_movie_genre_pairs": 0,
+    "sqlite_foreign_key_violations": 0,
+    "sqlite_foreign_keys_enabled_during_load": true
+  },
+  "cleaning_decisions": [
+    "保留全部有效评分，1星和5星不是脏数据；不按评分高低删除记录。",
+    "电影主键是movie_id，同名不同ID不盲目合并或删除。",
+    "发行日期缺失保留NULL；空的视频发行日期不用于业务指标，不补造日期。",
+    "genre按源文件真实多标签保留，unknown不替换成其他类型。",
+    "数据库和行级中间表仅留在被Git忽略的data目录；对外只保存聚合结果。"
+  ],
+  "preservation": {
+    "clean_rating_rows": 100000,
+    "clean_movie_rows": 1682,
+    "movie_genre_rows": 2893,
+    "rating_genre_join_rows": 212595,
+    "genre_weighted_rating_total": 100000.0
+  }
+}

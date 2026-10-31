@@ -1,44 +1,51 @@
-# MovieLens Rating Lab：电影评分的时间验证与偏差分析
+# MovieLens 数据分析：内容评分与候选片单
 
-用 MovieLens 100K 学习一个完整的数据分析过程：审计数据、设计时间验证、比较评分模型、分析冷启动和统计不确定性，最后写出可复现的结论。
+一个面向数据分析求职的公开数据案例：**从数据来源、处理和 SQL 指标，到 Python 图表、结果解释与建议。**
 
-## 从这里开始
+## 学习入口
 
-**[打开《完整学习过程》](docs/LEARNING_GUIDE.md)**
+**[完整数据分析过程](docs/LEARNING_GUIDE.md)**
 
-这份教程是唯一的学习顺序入口。按第 0–11 步依次完成，每一步都有操作代码、预期结果、完成条件和产物。覆盖环境安装、数据审计、模型手算、验证调参、最终重训、分组误差、bootstrap、滚动验证、选做矩阵分解，以及测试和 Git 提交。文末提供排错表。
+适合已经有 Python、SQL 基础的人。教程围绕四个问题，逐一解释为什么用这种方法、怎样计算、实际结果是什么，以及能支持什么建议：
 
-[Notebook](notebooks/01_explore.ipynb) 是执行教程代码的空白工作区；[基线报告](reports/BASELINE_REPORT.md) 是程序生成的参考结果；二者不再另设学习路线。
+1. 月度评分参与怎样变化：完整月比较、人数与人均量分解。
+2. 评分是否集中在少数影片：聚合、窗口排名与累计占比。
+3. 多类型影片怎样分析：桥表关联、重复计算与 `1/k` 分摊。
+4. 怎样形成口碑候选：样本门槛、收缩加权均分与敏感性检查。
 
-## 已有基础设施
+主线不要求先训练预测模型。软件安装放在文末，仅在确实缺少依赖时参考。
 
-- 三个可运行基线：`global`、`movie`、`user_movie`，参数只用验证集选择。
-- 按全局评分时间近似 70/15/15 切分，同时间戳不跨集合。
-- 参数冻结后用 train+validation 重拟合，报告测试 RMSE / MAE、覆盖率与训练流行度切片。
-- 按用户整簇配对 bootstrap，比较固定模型的 RMSE 差。
-- 12 项边界测试；仓库根目录 CI 在 Linux 与 Windows 运行这些测试。
+## 数据与结果
 
-![模型基线](reports/figures/model_comparison.svg)
+- MovieLens 100K：100,000 条评分、943 位用户、1,682 部电影。
+- 清洗保留全部有效评分；同名不同 ID 不盲删，缺失的非关键日期不补造。
+- 类型连接展开为 212,595 行，按 `1/k` 分摊后还原为 100,000 条评分权重。
+- 169 部评分最多的影片占评分 42.87%；小样本、年代和主动评分限制了外推。
+
+这里的评分数不等于播放量，月评分用户不等于平台 MAU。案例模拟内容编辑分析任务，不是企业真实运营交付，也不声称带来业务增长。
+
+[查看完整参考报告](reports/analyst/ANALYSIS_REPORT.md) · [质量审计](reports/analyst/audit.json) · [聚合指标](reports/analyst/metrics.json)
+
+![评分集中度](reports/analyst/figures/rating_concentration.svg)
 
 ## 文件导航
 
 ```text
-MovieLensRatingLab/
-  docs/LEARNING_GUIDE.md  # 完整教程，按顺序学习
-  notebooks/             # 你执行代码、记录观察的工作区
-  src/rating_lab/        # 数据、模型、bootstrap、CLI 与报告
-  tests/test_core.py     # 时间边界、冷启动、重采样等测试
-  reports/               # 初版聚合结果
-  reports/learning/      # 按教程运行后生成的个人实验结果
-  pyproject.toml         # 可编辑安装与固定直接依赖
+docs/LEARNING_GUIDE.md      # 唯一的主线教材：问题→方法→结果→建议
+notebooks/01_explore.ipynb  # 个人执行代码和写观察的工作区
+sql/analysis.sql           # 五段可独立执行的命名 SQL（SQLite 方言）
+src/rating_lab/analyst.py  # 源数据核验、清洗入库、SQL和聚合报告
+reports/analyst/           # 自动参考结果
+reports/analyst_learning/  # 你按教程运行后保存的聚合证据和图
+tests/                    # 数据关联、收缩与原有模型边界测试
 ```
 
-Python 3.11+；首次运行从官方获取约 5 MB 原包并校验 SHA-256，不需要 API Key。安装和运行命令全部从教程第 0 步开始，不必先自行拼接环境步骤。
+Python 自带 SQLite，便于复现 SQL；已有 MySQL/SQL Server 的读者可按相同口径迁移日期等方言。整条参考流程可运行 `python -m rating_lab.analyst`；教程同时给出逐项操作与独立核对方式。直接依赖见 `pyproject.toml`，缺包时使用 `python -m pip install -e .`。
 
-## 数据与解释范围
+原有评分预测代码及其基线报告保留为可选技术扩展，不属于这次岗位案例的学习主线。
 
-数据来源：[GroupLens 100K](https://grouplens.org/datasets/movielens/100k/)、[官方 README 与许可](https://files.grouplens.org/datasets/movielens/ml-100k-README.txt)。100,000 条评分、943 位用户、1,682 部电影，来自 1997–1998 年。这是固定历史教学基准，不能外推到今天所有观众。
+## 来源与许可
 
-评分预测误差不等于线上推荐质量。当前测试基线已公开，后续在同一尾段的比较属于探索；独立确认需要额外未参与选择的数据。
+[GroupLens 官方来源](https://grouplens.org/datasets/movielens/100k/) · [原始字段说明与许可](https://files.grouplens.org/datasets/movielens/ml-100k-README.txt)
 
-代码与原创文档使用 MIT 许可，MovieLens 数据适用单独条款。仓库不分发原包、行级评分、逐用户预测或训练参数；Notebook 提交前清空输出。完整数据背景和引用见教程末尾。
+这是 1997–1998 年的筛选样本。代码和原创文档使用 MIT 许可，数据适用 GroupLens 单独条款。原包、数据库、行级评分和逐用户输出保留在本地，不提交 GitHub；Notebook 发布前清空输出。

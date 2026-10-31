@@ -174,6 +174,6 @@ def write_report(result, output):
               "- 分组误差是描述性诊断，没有分组显著性或因果结论；小分组尤其不稳定。",
               "- 初版已展示测试集结果。改进实验应另定更晚时间窗/滚动验证，不能反复看本测试集调参后再宣称独立确认。", "",
               "## 继续学习", "",
-              "按 [完整学习过程](../docs/LEARNING_GUIDE.md) 第 0–11 步依次操作。本报告只保留基线结果参考；覆盖率的分母、验证与最终重训的区别，以及个人实验记录均在教程中说明。", "",
+              "岗位案例主线请阅读 [完整数据分析过程](../docs/LEARNING_GUIDE.md)：从来源、清洗和SQL指标到结论建议。本报告是评分预测的可选技术扩展。", "",
               "![数据概览](figures/data_overview.svg)", "", "完整聚合指标和运行环境见 [metrics.json](metrics.json)。", ""]
     (output / "BASELINE_REPORT.md").write_text("\n".join(lines), encoding="utf-8")
