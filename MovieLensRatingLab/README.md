@@ -6,7 +6,9 @@
 
 **[完整数据分析过程](docs/LEARNING_GUIDE.md)**
 
-从 [配套 Notebook](notebooks/01_explore.ipynb) 打开即可逐格运行，代码已按完整顺序放好。教程围绕四个问题，逐一解释为什么用这种方法、怎样计算、实际结果是什么，以及能支持什么建议：
+起点是你已下载的 `ml-100k.zip`。打开 [配套 Notebook](notebooks/01_explore.ipynb)，将原包放到学习文件夹，或只修改 `ZIP_PATH` 指向本地文件。前面的读取、处理与分析不导入任何项目函数；自定义函数在首次调用前完整展示。最后再按说明自己创建 `rating_lab/__init__.py` 和 `candidates.py`，保存好后导入。
+
+教程围绕四个问题，逐一解释为什么用这种方法、怎样计算、实际结果是什么，以及能支持什么建议：
 
 1. 月度评分参与怎样变化：完整月比较、人数与人均量分解。
 2. 评分是否集中在少数影片：聚合、窗口排名与累计占比。
@@ -33,13 +35,16 @@
 ```text
 docs/LEARNING_GUIDE.md      # 唯一的主线教材：问题→方法→结果→建议
 notebooks/01_explore.ipynb  # 个人执行代码和写观察的工作区
-src/rating_lab/analyst.py  # 源数据核验、DataFrame清洗、聚合与报告
+src/rating_lab/analyst.py  # 独立的自动复现实现，学习主线不依赖它
 reports/analyst/           # 自动参考结果
-reports/analyst_learning/  # 你按教程运行后保存的聚合证据和图
+notebooks/outputs/        # 按教程在学习目录中保存的聚合证据和图
+notebooks/rating_lab/     # 最后一节由你亲手建立的包，不是现成前置条件
 tests/                    # 数据关联、收缩与原有模型边界测试
 ```
 
-全部分析使用 pandas 的 `merge`、`melt`、`groupby`、`agg`、`sort_values` 和 `cumsum`，图表使用 matplotlib。逐步学习请打开 Notebook；整条参考流程可运行 `python -m rating_lab.analyst`。直接依赖见 `pyproject.toml`，缺包时使用 `python -m pip install -e .`。
+学习主线只需要本地原包和 numpy/pandas/matplotlib，使用 `merge`、`melt`、`groupby`、`agg`、`sort_values` 和 `cumsum`，不联网、不自动下载、不依赖预生成数据，也不用先安装本项目包。最后的建包步骤给出两个 `.py` 文件的全部内容；包放在 Notebook 的学习文件夹中，和已有的 `src/rating_lab` 分开。
+
+已有自动参考实现仍可用 `python -m rating_lab.analyst` 复现报告，它属于单独的可选入口，不代替学习过程。
 
 原有评分预测代码及其基线报告保留为可选技术扩展，不属于这次岗位案例的学习主线。
 

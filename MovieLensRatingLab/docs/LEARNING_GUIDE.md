@@ -1,10 +1,10 @@
-# 完整学习过程：用 Python 从原始数据做到分析结论
+# 从已下载的数据开始：亲手分析，再建立 rating_lab
 
-这份案例全部使用 **Python + pandas + matplotlib**。数据是 pandas 的 DataFrame，也就是内存中的表格；我们逐步读取、检查、关联、分组计算、画图和总结。
+起点是：你已经下载了 `ml-100k.zip`，现在自己从零分析。只需要这个本地 ZIP、Notebook 和 numpy/pandas/matplotlib。前面的分析不导入任何项目自定义模块，也不联网；每个步骤和自定义函数的完整代码都会先写出来。
 
 **学习顺序：问题 → 数据来源 → 检查与处理 → 指标 → 分析 → 解释 → 建议。**
 
-你可以直接打开 [配套 Notebook](../notebooks/01_explore.ipynb)：本文件的 Python 代码已按顺序放进单元格。每运行一格，看清中间表和检查结果，再进入下一格。所有单元格共享变量，重启内核后应从第一格顺序运行。
+打开 [配套 Notebook](../notebooks/01_explore.ipynb)，把你下载的 ZIP 放在这个 Notebook 所在的学习文件夹。前面的分析代码按顺序运行；到最后的建包步骤，先按说明亲手创建和保存两个 `.py` 文件，再运行导入格。所有变量从前面的单元格产生，不依赖之前运行过的项目。
 
 ## 一、明确分析要解决什么问题
 
@@ -40,59 +40,81 @@
 
 时间戳代表评分提交时间；评分数不是播放量，评分用户数不是平台月活。没有曝光、播放、注册、付费数据，不能直接计算转化、真实留存或收入贡献。
 
-## 三、读取数据：先看到原始表
+## 三、从你刚下载的 ZIP 开始读取
 
-### 3.1 准备 Python 工作区
+### 3.1 自己准备一个学习文件夹
 
-在项目目录或 `notebooks` 目录打开 Notebook。这里的 `PROJECT` 表示项目文件夹，`DATA` 放原包，`OUTPUT` 放你自己的聚合结果与图。
+可以新建一个文件夹，把 Notebook 和已下载的 ZIP 放在同一级。使用本仓库时，这个文件夹就是 `notebooks`：
+
+```text
+你的学习文件夹/
+  01_explore.ipynb
+  ml-100k.zip          ← 你下载的原包，不提交到 GitHub
+  outputs/            ← 后面保存聚合结果和图
+  rating_lab/         ← 最后一节才由你亲手建立
+```
+
+第一格只导入标准库和第三方工具，确认运行位置：
 
 ```python
 from pathlib import Path
+import hashlib
 import io
 import json
-import sys
 import zipfile
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-PROJECT = Path.cwd()
-if not (PROJECT / "pyproject.toml").exists():
-    PROJECT = PROJECT.parent
-assert (PROJECT / "src/rating_lab").is_dir(), "请在项目目录或 notebooks 目录运行"
-sys.path.insert(0, str(PROJECT / "src"))
-
-DATA = PROJECT / "data"
-OUTPUT = PROJECT / "reports/analyst_learning"
+WORK = Path.cwd()
+ZIP_PATH = WORK / "ml-100k.zip"
+OUTPUT = WORK / "outputs"
 OUTPUT.mkdir(parents=True, exist_ok=True)
+print("当前学习文件夹：", WORK)
+print("准备读取的文件：", ZIP_PATH)
+assert ZIP_PATH.is_file(), "请把已下载的 ml-100k.zip 放到上面显示的学习文件夹"
 ```
 
-### 3.2 获取评分原表
+`Path.cwd()` 是当前运行目录，不保证永远等于文件所在目录，所以先打印确认。若 ZIP 不在这里，也可以只把 `ZIP_PATH` 改成你文件的真实绝对路径，例如 `Path(r"C:\Users\你的用户名\Downloads\ml-100k.zip")`，其他代码继续使用同一个变量。
 
-项目已有的 `load_ratings()` 负责获取固定源包、检查 SHA-256，并做基本的行数、重复和评分范围校验。这里再用 `pd.read_csv()` 从已核验的包中重读一遍，让读取过程可见；第 4 节的质量检查是对输入的显式复核。
+这里不查找 `pyproject.toml`，不修改 `sys.path`，也不调用 `rating_lab` 中的现成函数。
+
+### 3.2 看原包里有什么，并确认版本
 
 ```python
-from rating_lab.data import load_ratings, SOURCE_SHA256
+SOURCE_SHA256 = "50d2a982c66986937beb9ffb3aa76efe955bf3d5c6b761f4e3a7cd717c6a3229"
+actual_hash = hashlib.sha256(ZIP_PATH.read_bytes()).hexdigest()
+assert actual_hash == SOURCE_SHA256, "文件不是本教程核验的 MovieLens 100K 原包，请核对下载来源与版本"
+with zipfile.ZipFile(ZIP_PATH) as source:
+    print(source.namelist()[:10])
+    for name in ["u.data", "u.item", "u.genre", "u.user"]:
+        assert "ml-100k/" + name in source.namelist()
+```
 
-verified_ratings = load_ratings(DATA)
-with zipfile.ZipFile(DATA / "ml-100k.zip") as source:
-    ratings_raw = pd.read_csv(io.BytesIO(source.read("ml-100k/u.data")), sep="\t",
-                              names=["user_id", "movie_id", "rating", "timestamp"])
-pd.testing.assert_frame_equal(ratings_raw, verified_ratings)
+哈希用于保证后面参考数字来自同一个原包。本教程直接从 ZIP 内读取，不必先解压；`ml-100k/u.data` 是压缩包内部的文件名。
+
+### 3.3 亲手读取评分原表
+
+```python
+with zipfile.ZipFile(ZIP_PATH) as source:
+    ratings_raw = pd.read_csv(
+        io.BytesIO(source.read("ml-100k/u.data")),
+        sep="\t", names=["user_id", "movie_id", "rating", "timestamp"],
+    )
 print("评分原表行列数：", ratings_raw.shape)
 print(ratings_raw.dtypes)
 ratings_raw.head()
 ```
 
-预期形状 `(100000, 4)`。一行是一条评分，不能把一行当一位用户或一部电影。`head()` 帮你确认列的含义；ID 是类别标识，不能按数值大小解释高低。
+`source.read()` 读出压缩包成员的字节，`io.BytesIO()` 把字节变成 pandas 可以读取的文件对象，`pd.read_csv()` 负责解析。`sep="\t"` 表示制表符分隔；源文件没有标题行，所以显式提供四个列名。
 
-### 3.3 读取电影与类型
+预期形状 `(100000, 4)`。一行是一条评分，不是一位用户或一部电影。这里没有使用隐藏的数据读取函数，检查将在下一节明确完成。
 
-`u.item` 用 `|` 分隔、Latin-1 编码；最后 19 列是 0/1 类型标记。我们保留原始空字符串，以便区分“本来缺失”和“解析失败”。
+### 3.4 亲手读取电影、类型和用户 ID
 
 ```python
-with zipfile.ZipFile(DATA / "ml-100k.zip") as source:
+with zipfile.ZipFile(ZIP_PATH) as source:
     genres = pd.read_csv(io.BytesIO(source.read("ml-100k/u.genre")), sep="|",
                          names=["genre", "genre_id"], encoding="latin-1")
     flag_columns = [f"genre_{value}" for value in genres.sort_values("genre_id")["genre_id"]]
@@ -103,14 +125,15 @@ with zipfile.ZipFile(DATA / "ml-100k.zip") as source:
     )
     users = pd.read_csv(io.BytesIO(source.read("ml-100k/u.user")), sep="|", header=None,
                         usecols=[0], encoding="latin-1").rename(columns={0: "user_id"})
-
 assert raw_movies.shape == (1682, 24)
 assert len(genres) == 19
 print("电影原表：", raw_movies.shape, "；类型表：", genres.shape)
 raw_movies[["movie_id", "title", "release_date_raw"]].head()
 ```
 
-为什么指定格式？如果用错分隔符，可能把整行读成一列；编码错误可能使标题损坏。先读对结构，再讨论清洗。
+`u.item` 用 `|` 分隔、Latin-1 编码；最后 19 列是 0/1 类型标记。`keep_default_na=False` 保留原始空字符串，后面才区分“本来缺失”和“非空但解析失败”。用户表只取第 0 列 ID，不读取人口属性做推断。
+
+如果格式读错，可能整行挤进一列或标题乱码。因此先确认原始表形状、列名和预览，再决定清洗规则。
 
 ## 四、检查质量，并解释每项处理决定
 
@@ -468,16 +491,53 @@ candidates[["title", "rating_count", "raw_mean", "high_rating_ratio", "shrunk_me
 
 本次共有 806 部影片达到 30 条门槛，全局均分为 3.52986。例如 A Close Shave 的原均分约 4.491、112 条评分，m=50 后约 4.194；Schindler's List 的原均分约 4.466、298 条评分，收缩后约 4.332。排序改变反映样本量与规则的影响，不能由此断言哪部片客观更好。
 
+### 先写出自己的函数，再调用它
+
+前面已逐行完成候选榜。现在才把同一组操作提取成函数，完整定义如下。参数 `ratings`、`movies` 是输入表，`min_ratings` 和 `prior_strength` 是分析规则；函数内部不读取 Notebook 的全局表。
+
+```python
+def make_candidate_table(ratings, movies, min_ratings=30, prior_strength=50):
+    """按评分量门槛和收缩均分生成候选；所有输入显式传入。"""
+    if ratings.empty or min_ratings < 1 or prior_strength < 0:
+        raise ValueError("评分不能为空，门槛至少为1，收缩强度不能为负")
+    if movies["movie_id"].duplicated().any():
+        raise ValueError("电影ID必须唯一")
+    if not ratings["movie_id"].isin(movies["movie_id"]).all():
+        raise ValueError("有评分找不到对应电影")
+    stats = ratings.assign(is_high=ratings["rating"].ge(4).astype(float)).groupby(
+        "movie_id", as_index=False).agg(
+            rating_count=("rating", "size"), raw_mean=("rating", "mean"),
+            high_rating_ratio=("is_high", "mean"),
+        )
+    result = stats.loc[stats["rating_count"].ge(min_ratings)].merge(
+        movies[["movie_id", "title"]], on="movie_id", how="left", validate="one_to_one",
+    )
+    overall_mean = float(ratings["rating"].mean())
+    result["global_mean"] = overall_mean
+    result["prior_strength"] = prior_strength
+    result["shrunk_mean"] = (
+        result["rating_count"] * result["raw_mean"] + prior_strength * overall_mean
+    ) / (result["rating_count"] + prior_strength)
+    result = result.sort_values(
+        ["shrunk_mean", "rating_count", "movie_id"], ascending=[False, False, True],
+    ).reset_index(drop=True)
+    result["shrunk_rank"] = np.arange(1, len(result) + 1)
+    return result
+
+manual_candidates = candidates.copy()
+candidates_from_function = make_candidate_table(ratings, movies, min_ratings=30, prior_strength=50)
+pd.testing.assert_frame_equal(manual_candidates, candidates_from_function)
+print("自己定义的函数与刚才逐行计算的结果一致")
+```
+
+`def` 执行后只是定义函数；下一行带括号的调用才会计算。这里先与手工结果逐列核对，避免为了封装而悄悄改变口径。
+
 ### 改变参考强度，看名单是否依赖单一参数
 
 ```python
 sensitivity_frames = []
 for strength in [20, 50, 100]:
-    scored = candidates.copy()
-    scored["prior_strength"] = strength
-    scored["shrunk_mean"] = (scored["rating_count"] * scored["raw_mean"] + strength * global_mean) / (scored["rating_count"] + strength)
-    scored = scored.sort_values(["shrunk_mean", "rating_count", "movie_id"], ascending=[False, False, True]).head(20).copy()
-    scored["shrunk_rank"] = np.arange(1, len(scored) + 1)
+    scored = make_candidate_table(ratings, movies, min_ratings=30, prior_strength=strength).head(20).copy()
     sensitivity_frames.append(scored)
 sensitivity = pd.concat(sensitivity_frames, ignore_index=True)
 top_sets = {int(value): set(rows["movie_id"]) for value, rows in sensitivity.groupby("prior_strength")}
@@ -541,7 +601,7 @@ evidence["source_sha256"] = SOURCE_SHA256
 print("聚合证据保存到：", OUTPUT / "evidence.json")
 ```
 
-建立 `docs/MY_ANALYSIS.md`，写出自己的理解：
+在当前学习文件夹新建 `MY_ANALYSIS.md`，写出自己的理解：
 
 ```markdown
 # 我的 MovieLens 数据分析
@@ -570,52 +630,120 @@ groupby、merge、累计占比、1/k分摊、收缩排序为什么适合这些�
 
 完整参考：[分析报告](../reports/analyst/ANALYSIS_REPORT.md)、[聚合指标](../reports/analyst/metrics.json)、[质量审计](../reports/analyst/audit.json)。面试时如实描述为个人公开数据案例，不能包装成企业真实增长项目。
 
-## 十二、最后再看封装好的自动流程
+## 十二、亲手创建 rating_lab，再从文件中导入
 
-你已经逐步看到了 DataFrame 如何变成分析结果。现在可以运行项目的自动实现，核对结果并理解函数封装：
+到这里，分析已经只凭本地 ZIP 完成了。现在学习的是如何把你亲手定义的函数保存成可复用文件；这一步不增加新的分析方法。
 
-```python
-from rating_lab.analyst import run_analysis
+### 12.1 创建普通 Python 包
 
-reference_result = run_analysis(DATA, PROJECT / "reports/analyst")
-for name, manual, key, columns in [
-    ("monthly", monthly, "rating_month", ["rating_month", "rating_count", "scoring_users", "day_normalized_ratings"]),
-    ("genre", genre, "genre_id", ["genre_id", "weighted_count", "weighted_rating_mean", "weighted_share"]),
-    ("movie_candidates", candidates.head(30), "shrunk_rank", ["shrunk_rank", "movie_id", "rating_count", "raw_mean", "shrunk_mean"]),
-]:
-    expected = pd.DataFrame(reference_result[name])
-    pd.testing.assert_frame_equal(
-        manual[columns].sort_values(key).reset_index(drop=True),
-        expected[columns].sort_values(key).reset_index(drop=True),
-        check_dtype=False, check_exact=False, rtol=1e-9, atol=1e-8,
-    )
-for name, value in concentration.items():
-    assert np.isclose(value, reference_result["concentration"][name])
-print("手工过程与自动流程的关键结果一致")
+在当前学习文件夹下，自己新建下面的文件夹和文件：
+
+```text
+你的学习文件夹/
+  01_explore.ipynb
+  ml-100k.zip
+  outputs/
+  rating_lab/
+    __init__.py
+    candidates.py
 ```
 
-上面的核对先按月份或类型 ID 等键对齐，再逐列比较数值；只看总和相同并不能证明各类型都分对了。JSON 会有数值精度差异，因此使用小容差，且保留完整的键和排序核对。
+可以用编辑器的新建文件功能建立。`rating_lab` 是你自己的文件夹；`candidates.py` 是模块；`__init__.py` 把这个文件夹明确作为普通 Python 包。文件名不要带 `.txt` 后缀。
 
-主实现是 [analyst.py](../src/rating_lab/analyst.py)：`prepare_data()` 返回处理后的 DataFrame 与审计字典，五个 `analyze_*()` 函数分别计算月度、集中度、候选、类型和敏感性。`run_analysis()` 将它们组织起来并写报告；这些函数封装的是你前面已经看懂的操作。
+### 12.2 创建并保存 __init__.py
+
+下面是这个文件的**全部内容**。请保存到 `rating_lab/__init__.py`，不是只在 Notebook 中执行：
+
+```python
+# file: rating_lab/__init__.py
+"""我的 MovieLens 分析工具。"""
+```
+
+### 12.3 创建并保存 candidates.py
+
+下面是该文件的**全部内容**，包括它自己需要的导入和完整函数体。不能只写函数名，也不能依赖 Notebook 中已经导入的 `np`、`pd`。
+
+```python
+# file: rating_lab/candidates.py
+"""我自己编写的电影候选分析函数。"""
+
+import numpy as np
+import pandas as pd
+
+
+def make_candidate_table(ratings, movies, min_ratings=30, prior_strength=50):
+    """按评分量门槛和收缩均分生成候选；所有输入显式传入。"""
+    if ratings.empty or min_ratings < 1 or prior_strength < 0:
+        raise ValueError("评分不能为空，门槛至少为1，收缩强度不能为负")
+    if movies["movie_id"].duplicated().any():
+        raise ValueError("电影ID必须唯一")
+    if not ratings["movie_id"].isin(movies["movie_id"]).all():
+        raise ValueError("有评分找不到对应电影")
+    stats = ratings.assign(is_high=ratings["rating"].ge(4).astype(float)).groupby(
+        "movie_id", as_index=False).agg(
+            rating_count=("rating", "size"), raw_mean=("rating", "mean"),
+            high_rating_ratio=("is_high", "mean"),
+        )
+    result = stats.loc[stats["rating_count"].ge(min_ratings)].merge(
+        movies[["movie_id", "title"]], on="movie_id", how="left", validate="one_to_one",
+    )
+    overall_mean = float(ratings["rating"].mean())
+    result["global_mean"] = overall_mean
+    result["prior_strength"] = prior_strength
+    result["shrunk_mean"] = (
+        result["rating_count"] * result["raw_mean"] + prior_strength * overall_mean
+    ) / (result["rating_count"] + prior_strength)
+    result = result.sort_values(
+        ["shrunk_mean", "rating_count", "movie_id"], ascending=[False, False, True],
+    ).reset_index(drop=True)
+    result["shrunk_rank"] = np.arange(1, len(result) + 1)
+    return result
+```
+
+这就是前面已验证函数的文件版本。以后增加其他模块，也要先展开完整操作、验证函数，再明确写入哪个文件，保存后才导入。
+
+### 12.4 文件保存好以后，再运行导入
+
+先确认 Notebook 的当前目录是学习文件夹，和 `rating_lab` 文件夹同级。如果在本仓库中练习，包放在 `notebooks/rating_lab`，与已有 `src/rating_lab` 分开。
+
+如果当前内核以前导入过旧项目的 `rating_lab`，先重启内核，再顺序运行前面的数据处理与分析。不要跳过创建文件而直接运行下面的导入。
+
+```python
+assert (WORK / "rating_lab/__init__.py").is_file(), "请先建立并保存 __init__.py"
+assert (WORK / "rating_lab/candidates.py").is_file(), "请先建立并保存 candidates.py"
+
+import rating_lab
+print("实际导入的包：", rating_lab.__file__)
+assert Path(rating_lab.__file__).resolve() == (WORK / "rating_lab/__init__.py").resolve(), "导入了其他同名包，请重启内核并确认当前目录"
+from rating_lab.candidates import make_candidate_table as saved_make_candidate_table
+
+result_from_file = saved_make_candidate_table(ratings, movies, min_ratings=30, prior_strength=50)
+pd.testing.assert_frame_equal(manual_candidates, result_from_file)
+print("从自己建立的文件中导入成功，结果与手工分析一致")
+```
+
+`as saved_make_candidate_table` 是给导入函数起一个新名字，防止与前面 Notebook 内定义的同名函数混淆。`rating_lab.__file__` 告诉你实际加载了哪个包；结果对照证明运行的是保存到 `.py` 的版本。
+
+### 12.5 在新脚本里复用
+
+以后把新的 Python 脚本放在学习文件夹中，与 `rating_lab` 同级，就能用 `from rating_lab.candidates import make_candidate_table` 导入。传入你已经处理好的评分表与电影表后再调用；函数不会替你下载数据、创建输入表或猜测路径。
 
 ### 完成标准
 
-- [ ] 能解释原表粒度、来源和样本范围。
-- [ ] 每个质量处理决定都有理由与数量，1/5 星和同名条目没有被盲删。
-- [ ] 能用 `melt` 拆标签，用 `merge(validate=...)` 核对关联关系。
-- [ ] 清楚 `size`、`nunique`、`mean` 分别算什么。
-- [ ] 月度总量、人均量和日均量口径明确，部分月份单列。
-- [ ] 集中度先聚合电影，再排序、累计，目录分母没有丢失。
-- [ ] 能解释 212,595 行展开与 100,000 权重守恒。
-- [ ] 三种类型均值含义清楚，收缩分不是显著性证据。
-- [ ] 改过至少一个样本门槛，保留敏感性结果。
+- [ ] 只有本地 ZIP、Notebook 和第三方依赖，也能完成前面的分析。
+- [ ] 原始读取、质量检查、日期转换、类型拆解和每个分析步骤都能逐格复现。
+- [ ] 自定义函数在首次调用前有完整 `def`，没有依赖隐藏全局变量。
+- [ ] 能解释 `melt`、`merge`、`groupby`、累计占比、分摊与收缩的理由。
+- [ ] 保留合法评分，不盲删同名条目，部分月份与各指标分母明确。
+- [ ] 分摊权重接近十万，函数结果与手工结果一致。
 - [ ] 建议有数字、替代解释、限制和验证计划。
-- [ ] Notebook 重启后能从头运行；发布前清空输出。
+- [ ] 自己创建了两个 `.py` 文件，并确认导入路径指向自己的包。
+- [ ] 发布前清空 Notebook 输出，不提交 ZIP 或逐条评分。
 
-### 运行与文件
+### 文件与依赖
 
-直接打开配套 Notebook 逐格运行，或在项目目录使用 `python -m rating_lab.analyst` 复现完整参考结果。依赖为 numpy、pandas、matplotlib；缺少时在当前环境使用 `python -m pip install -e .`。自有分析输出位于 `reports/analyst_learning/`，自动参考位于 `reports/analyst/`。
+学习入口就是本指南和配套 Notebook。只使用标准库及 numpy、pandas、matplotlib；前面不需要安装本项目包、不需要 `pyproject.toml`，也不修改模块搜索路径。
 
-原包只留在本地 `data/`。原有评分预测代码是可选的 Python 技术扩展，不属于当前岗位分析主线。
+当前学习目录的 `outputs/evidence.json` 与 SVG 是你自己的聚合证据。仓库的 [参考报告](../reports/analyst/ANALYSIS_REPORT.md) 和 [聚合指标](../reports/analyst/metrics.json) 可以供你核对，但本教程不通过调用现成分析模块来替代自己的计算。
 
 数据适用 GroupLens 单独许可，代码许可不覆盖源数据。不要提交原包、逐条评分、逐用户输出或训练参数。引用：Harper & Konstan (2015), *The MovieLens Datasets: History and Context*. [DOI: 10.1145/2827872](https://doi.org/10.1145/2827872).
