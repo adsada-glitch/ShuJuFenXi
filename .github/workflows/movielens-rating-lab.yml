@@ -29,6 +29,6 @@ jobs:
         with:
           python-version: '3.12'
           cache: pip
-          cache-dependency-path: MovieLensRatingLab/pyproject.toml
-      - run: python -m pip install -e .
+          cache-dependency-path: MovieLensRatingLab/requirements.txt
+      - run: python -m pip install -r requirements.txt
       - run: python -m unittest discover -s tests -v

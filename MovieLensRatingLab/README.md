@@ -1,57 +1,83 @@
 # MovieLens 数据分析：内容评分与候选片单
 
-一个面向数据分析求职的纯 Python 案例：**用 pandas 从原始数据读取、清洗和指标计算，做到图表、结论与建议。**
+使用 **Python + pandas**，从 MovieLens 100K 原始评分与电影目录出发，完成数据质量审计、月度参与分析、评分集中度、多标签分摊和口碑候选敏感性分析。
 
-## 学习入口
+项目由 `fenxi.py` 调用自己建立的 `rating_lab` 模块，保留可复现代码、实际聚合结果和分析报告。
 
-**[完整数据分析过程](docs/LEARNING_GUIDE.md)**
+## 分析问题与方法
 
-起点是你已下载的 `ml-100k.zip`。打开 [配套 Notebook](notebooks/01_explore.ipynb)，严格分两部分：**第一部分集中写完并保存 `rating_lab` 的全部7个文件；第二部分才统一导入，再读取、清洗和分析。** 两部分不穿插执行。
+| 问题 | 方法 | 代码 |
+|---|---|---|
+| 评分参与随时间怎样变化？ | 完整月比较、评分人数与人均量分解、日历日标准化 | [monthly.py](rating_lab/monthly.py) |
+| 评分是否集中在少数电影？ | 电影级聚合、稳定排序、累计份额和长尾切片 | [concentration.py](rating_lab/concentration.py) |
+| 多类型电影怎样计算才不重复？ | 类型桥表、1/k分摊、三种均值口径 | [genres.py](rating_lab/genres.py) |
+| 高分榜怎样考虑评分量？ | n≥30门槛、收缩均分、m=20/50/100敏感性 | [candidates.py](rating_lab/candidates.py) |
 
-第一部分连续给出 `__init__.py`、`data_io.py`、`cleaning.py`、`monthly.py`、`concentration.py`、`genres.py`、`candidates.py` 的完整源码。全部保存好以后，才运行第二部分的第一个代码单元格。
+## 实际结果
 
-教程围绕四个问题，逐一解释为什么用这种方法、怎样计算、实际结果是什么，以及能支持什么建议：
+- 检查并保留 **100,000 条评分、1,682 个电影ID**；评分缺失、重复组合、越界和孤儿关联均为0。
+- 评分最多的前 **169 部**电影占评分 **42.87%**；前337部占64.72%。
+- ≤20条评分的电影有 **755 部**，占目录44.89%，但只占评分5.27%。
+- 类型连接展开为 **212,595 行**，1/k分摊后权重恢复为十万，避免把多标签记录误当新增评分。
+- m=20与m=100时Top20共同成员为 **17 部**；结果描述参数选择的敏感性，不代表线上效果或统计显著性。
 
-1. 月度评分参与怎样变化：完整月比较、人数与人均量分解。
-2. 评分是否集中在少数影片：聚合、窗口排名与累计占比。
-3. 多类型影片怎样分析：桥表关联、重复计算与 `1/k` 分摊。
-4. 怎样形成口碑候选：样本门槛、收缩加权均分与敏感性检查。
+这些数值均可在 [evidence.json](outputs/evidence.json) 中核对。完整的问题、处理决策、结果解释和建议见 [分析报告](docs/ANALYSIS_REPORT.md)。
 
-主线不要求先训练预测模型。软件安装放在文末，仅在确实缺少依赖时参考。
+![月度评分参与](outputs/monthly_participation.svg)
 
-## 数据与结果
+![评分集中度](outputs/concentration.svg)
 
-- MovieLens 100K：100,000 条评分、943 位用户、1,682 部电影。
-- 清洗保留全部有效评分；同名不同 ID 不盲删，缺失的非关键日期不补造。
-- 类型连接展开为 212,595 行，按 `1/k` 分摊后还原为 100,000 条评分权重。
-- 169 部评分最多的影片占评分 42.87%；小样本、年代和主动评分限制了外推。
+## 运行
 
-这里的评分数不等于播放量，月评分用户不等于平台 MAU。案例模拟内容编辑分析任务，不是企业真实运营交付，也不声称带来业务增长。
+将官方 `ml-100k.zip` 放在项目根目录，与 `fenxi.py` 同级，然后执行：
 
-[查看完整参考报告](reports/analyst/ANALYSIS_REPORT.md) · [质量审计](reports/analyst/audit.json) · [聚合指标](reports/analyst/metrics.json)
-
-![评分集中度](reports/analyst/figures/rating_concentration.svg)
-
-## 文件导航
-
-```text
-docs/LEARNING_GUIDE.md      # 唯一的主线教材：问题→方法→结果→建议
-notebooks/01_explore.ipynb  # 个人执行代码和写观察的工作区
-src/rating_lab/analyst.py  # 独立的自动复现实现，学习主线不依赖它
-reports/analyst/           # 自动参考结果
-notebooks/outputs/        # 按教程在学习目录中保存的聚合证据和图
-notebooks/rating_lab/     # 第一部分由你集中写完全部7个文件
-tests/                    # 数据关联、收缩与原有模型边界测试
+```bash
+python -m pip install -r requirements.txt
+python fenxi.py
 ```
 
-学习主线只需要本地原包和 numpy/pandas/matplotlib，不联网、不自动下载、不依赖预生成数据，也不用先安装本项目包。先集中完成所有文件，再统一导入调用；完整源码全部在第一部分。自己的包放在 Notebook 学习文件夹中，和已有 `src/rating_lab` 分开。
+数据也可以保存在其他位置：
 
-已有自动参考实现仍可用 `python -m rating_lab.analyst` 复现报告，它属于单独的可选入口，不代替学习过程。
+```bash
+python fenxi.py --zip "你的数据目录/ml-100k.zip" --output-dir "outputs"
+```
 
-原有评分预测代码及其基线报告保留为可选技术扩展，不属于这次岗位案例的学习主线。
+默认保存图和聚合结果，不等待交互窗口；加 `--show` 可交互查看图。默认数据和结果路径基于脚本所在目录，支持从其他工作目录启动。
 
-## 来源与许可
+输出为 `evidence.json`、`monthly_participation.svg` 和 `concentration.svg`。自定义输出目录可用于独立复现，避免覆盖已有证据。
 
-[GroupLens 官方来源](https://grouplens.org/datasets/movielens/100k/) · [原始字段说明与许可](https://files.grouplens.org/datasets/movielens/ml-100k-README.txt)
+## 项目结构
 
-这是 1997–1998 年的筛选样本。代码和原创文档使用 MIT 许可，数据适用 GroupLens 单独条款。原包、数据库、行级评分和逐用户输出保留在本地，不提交 GitHub；Notebook 发布前清空输出。
+```text
+MovieLensRatingLab/
+  fenxi.py
+  rating_lab/
+    __init__.py
+    data_io.py
+    cleaning.py
+    monthly.py
+    concentration.py
+    genres.py
+    candidates.py
+  outputs/
+    evidence.json
+    monthly_participation.svg
+    concentration.svg
+  docs/ANALYSIS_REPORT.md
+  tests/test_rating_lab.py
+  requirements.txt
+```
+
+代码先集中在 `rating_lab` 中定义函数，再由 `fenxi.py` 统一导入和调用。源包和行级数据只在本地读取，不提交GitHub。测试命令：
+
+```bash
+python -m unittest discover -s tests -v
+```
+
+## 数据与范围
+
+[GroupLens 官方来源](https://grouplens.org/datasets/movielens/100k/) · [字段与许可](https://files.grouplens.org/datasets/movielens/ml-100k-README.txt)
+
+这是1997–1998年的筛选样本；评分时间是提交时间。评分数不是播放量，评分用户不是平台月活，类型分摊份额不是市场份额。候选名单只是供进一步复核的历史内容案例，不能证明收入、留存或推荐效果提升。
+
+数据适用GroupLens单独条款，MIT代码许可不覆盖源数据。引用：Harper & Konstan (2015), *The MovieLens Datasets: History and Context*. [DOI](https://doi.org/10.1145/2827872)。

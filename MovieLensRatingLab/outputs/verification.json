@@ -1,0 +1,113 @@
+{
+  "source": {
+    "project_label": "MovieLensRatingL",
+    "evidence_relative_path": "outputs/evidence.json",
+    "original_evidence_sha256": "ba346fcfd48ea37eb6a3f76897115d9f3fb0dadc15065f2c649d65c1bd69f2ec",
+    "original_entry_sha256": "1e79480312677f7c415432b57480e4de7e2d030d786256d0f52c6cc8e256d9b6",
+    "archive_sha256": "50d2a982c66986937beb9ffb3aa76efe955bf3d5c6b761f4e3a7cd717c6a3229",
+    "original_files_unchanged": true,
+    "original_files_checked": 12
+  },
+  "environment": {
+    "python": "3.12.5",
+    "numpy": "2.2.6",
+    "pandas": "2.3.3",
+    "matplotlib": "3.10.7"
+  },
+  "checks": {
+    "original_replay": {
+      "exit_code": 0,
+      "comparison": {
+        "leaf_values": 1032,
+        "numeric_values": 912,
+        "nonidentical_numbers": 0,
+        "maximum_absolute_numeric_difference": 0.0,
+        "equal": true,
+        "relative_tolerance": 1e-10,
+        "absolute_tolerance": 1e-09
+      }
+    },
+    "rebuilt_cli": {
+      "exit_code": 0,
+      "comparison": {
+        "leaf_values": 1032,
+        "numeric_values": 912,
+        "nonidentical_numbers": 0,
+        "maximum_absolute_numeric_difference": 0.0,
+        "equal": true,
+        "relative_tolerance": 1e-10,
+        "absolute_tolerance": 1e-09
+      }
+    },
+    "script_relative_defaults": {
+      "exit_code": 0,
+      "comparison": {
+        "leaf_values": 1032,
+        "numeric_values": 912,
+        "nonidentical_numbers": 0,
+        "maximum_absolute_numeric_difference": 0.0,
+        "equal": true,
+        "relative_tolerance": 1e-10,
+        "absolute_tolerance": 1e-09
+      }
+    }
+  },
+  "unit_tests": {
+    "passed": 8,
+    "exit_code": 0
+  },
+  "independently_computed_input_summary": {
+    "rating_rows": 100000,
+    "distinct_rating_users": 943,
+    "distinct_rated_movie_ids": 1682,
+    "all_candidates_n_ge_30": 806,
+    "provenance": "Computed independently for this verification; these are not extra fields in the user's original evidence.json"
+  },
+  "module_source_comparison": {
+    "__init__.py": {
+      "published_name": "__init__.py",
+      "bytes_unchanged": true
+    },
+    "candidates.py": {
+      "published_name": "candidates.py",
+      "bytes_unchanged": true
+    },
+    "cleaning.py": {
+      "published_name": "cleaning.py",
+      "bytes_unchanged": true
+    },
+    "conentration.py": {
+      "published_name": "concentration.py",
+      "bytes_unchanged": true
+    },
+    "data_io.py": {
+      "published_name": "data_io.py",
+      "bytes_unchanged": true
+    },
+    "genres.py": {
+      "published_name": "genres.py",
+      "bytes_unchanged": true
+    },
+    "monthly.py": {
+      "published_name": "monthly.py",
+      "bytes_unchanged": true
+    }
+  },
+  "figure_checks": {
+    "monthly_participation.svg": {
+      "valid_xml": true,
+      "text_preserved": true,
+      "trailing_whitespace": false,
+      "dated_metadata": false,
+      "repeat_sha256": "158ac764be461b804f98756151456f6fd88ca9862aee07b4378c445906349c56"
+    },
+    "concentration.svg": {
+      "valid_xml": true,
+      "text_preserved": true,
+      "trailing_whitespace": false,
+      "dated_metadata": false,
+      "repeat_sha256": "ab178cbd13823301fbd4971e0c7e5c3bff881be2e672f6621c84e637ba6534c6"
+    }
+  },
+  "raw_data_in_published_files": false
+}
