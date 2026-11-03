@@ -56,7 +56,7 @@
 
 ## 继续学习
 
-岗位案例主线请阅读 [完整数据分析过程](../docs/LEARNING_GUIDE.md)：从来源、清洗和SQL指标到结论建议。本报告是评分预测的可选技术扩展。
+岗位案例主线请阅读 [完整数据分析过程](../docs/LEARNING_GUIDE.md)：用pandas从来源、清洗和指标计算做到结论建议。本报告是评分预测的可选技术扩展。
 
 ![数据概览](figures/data_overview.svg)
 

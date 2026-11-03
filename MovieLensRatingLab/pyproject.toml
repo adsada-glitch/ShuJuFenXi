@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "movielens-rating-lab"
 version = "0.1.0"
-description = "A reproducible learning lab for temporal rating prediction and uncertainty"
+description = "Pure-Python MovieLens data analysis with pandas and reproducible reports"
 requires-python = ">=3.11"
 dependencies = ["numpy==2.2.6", "pandas==2.3.3", "matplotlib==3.10.7"]
 

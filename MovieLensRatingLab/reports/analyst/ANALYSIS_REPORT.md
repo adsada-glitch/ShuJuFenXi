@@ -9,8 +9,8 @@
 ## 数据与分析口径
 
 固定MovieLens 100K，分析范围为全部历史已记录评分；按UTC评分提交时间统计，不使用模型训练/验证/测试切分。首尾月份保守标为不完整月，月间比较使用1997-10至1998-03六个完整日历月。
-电影主键为movie_id，同名不同ID不合并；发行日期缺失保留NULL，unknown类型按真实标记保留，1星和5星都不作为脏数据删除。具体缺失、重复、孤儿外键与行数守恒检查见[audit.json](audit.json)。
-原始档案、行级表和SQLite仅留在data目录；本报告和[metrics.json](metrics.json)发布聚合结果。
+电影主键为movie_id，同名不同ID不合并；发行日期缺失保留NaT，unknown类型按真实标记保留，1星和5星都不作为脏数据删除。具体缺失、重复、孤儿外键与行数守恒检查见[audit.json](audit.json)。
+原始档案仅留在data目录；行级DataFrame在本地内存中处理，本报告和[metrics.json](metrics.json)发布聚合结果。
 
 ## 问题一：完整月份的评分活动怎样变化？
 
@@ -98,6 +98,6 @@ Top20成员的重合不代表内部名次顺序相同，也不是统计显著性
 ## 限制与复现
 
 用户和评分记录都存在选择偏差；1997–1998年的历史样本不能代表今天所有观众。没有曝光、观看或随机分配数据，描述性差异不能证明因果。先验强度敏感性也不涵盖抽样误差、异常评分机制或时期变化。
-从项目目录运行`python -m rating_lab.analyst`可重建本报告；SQL位于[analysis.sql](../../sql/analysis.sql)。完整聚合表见[metrics.json](metrics.json)，源数据审计见[audit.json](audit.json)。
+从项目目录运行`python -m rating_lab.analyst`可重建本报告；纯Python分析实现位于[analyst.py](../../src/rating_lab/analyst.py)。完整聚合表见[metrics.json](metrics.json)，源数据审计见[audit.json](audit.json)。
 固定原包SHA-256：`50d2a982c66986937beb9ffb3aa76efe955bf3d5c6b761f4e3a7cd717c6a3229`。代码许可不覆盖MovieLens源数据，发布内容保持为聚合结果。
-后续按[学习指南](../../docs/LEARNING_GUIDE.md)复核口径、执行SQL并写出自己的结论。
+后续按[学习指南](../../docs/LEARNING_GUIDE.md)复核口径、运行Pandas分析并写出自己的结论。

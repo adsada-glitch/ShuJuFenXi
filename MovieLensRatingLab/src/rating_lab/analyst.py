@@ -1,26 +1,16 @@
-"""A SQL-first analyst case: source audit, explicit metrics and aggregate reports."""
+"""A pure-Python analyst case: audited DataFrames and explicit aggregate metrics."""
 
 import argparse
-from contextlib import closing
 import io
 import itertools
 import json
 from pathlib import Path
-import re
-import sqlite3
 import zipfile
 
 import numpy as np
 import pandas as pd
 
 from .data import PROJECT_ROOT, SOURCE_SHA256, SOURCE_URL, load_ratings
-
-
-def load_queries():
-    """Return the five independently executable named SQL queries."""
-    source = (PROJECT_ROOT / "sql" / "analysis.sql").read_text(encoding="utf-8")
-    sections = re.split(r"^-- name:\s*(\w+)\s*$", source, flags=re.M)
-    return {sections[index]: sections[index + 1].strip() for index in range(1, len(sections), 2)}
 
 
 def shrink_mean(raw_mean, rating_count, global_mean, prior_strength=50):
@@ -53,7 +43,7 @@ def normalize_movies(raw_movies, genres, flag_names):
     """Keep distinct movie IDs even when titles repeat; preserve actual genre flags."""
     dates = pd.to_datetime(raw_movies.release_date_raw, format="%d-%b-%Y", errors="coerce")
     movies = raw_movies[["movie_id", "title"]].copy()
-    movies["release_date"] = dates.dt.strftime("%Y-%m-%d").where(dates.notna(), None)
+    movies["release_date"] = dates
     movies["release_year"] = dates.dt.year.astype("Int64")
     membership = raw_movies[["movie_id"] + flag_names].melt(id_vars="movie_id", var_name="flag", value_name="present")
     membership = membership[membership.present == 1].copy()
@@ -62,34 +52,61 @@ def normalize_movies(raw_movies, genres, flag_names):
     return movies, membership[["movie_id", "genre_id", "genre"]], dates
 
 
-def _create_schema(connection):
-    connection.execute("PRAGMA foreign_keys = ON")
-    connection.executescript("""
-        CREATE TABLE users (user_id INTEGER PRIMARY KEY);
-        CREATE TABLE genres (genre_id INTEGER PRIMARY KEY, genre TEXT NOT NULL UNIQUE);
-        CREATE TABLE movies (movie_id INTEGER PRIMARY KEY, title TEXT NOT NULL,
-                             release_date TEXT, release_year INTEGER);
-        CREATE TABLE ratings (
-            user_id INTEGER NOT NULL REFERENCES users(user_id),
-            movie_id INTEGER NOT NULL REFERENCES movies(movie_id),
-            rating INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 5),
-            timestamp INTEGER NOT NULL,
-            rated_at_utc TEXT NOT NULL, rating_month TEXT NOT NULL,
-            PRIMARY KEY(user_id, movie_id)
-        );
-        CREATE TABLE movie_genres (
-            movie_id INTEGER NOT NULL REFERENCES movies(movie_id),
-            genre_id INTEGER NOT NULL REFERENCES genres(genre_id), genre TEXT NOT NULL,
-            PRIMARY KEY(movie_id, genre_id)
-        );
-        CREATE VIEW rating_clean AS SELECT * FROM ratings;
-        CREATE INDEX ratings_by_movie ON ratings(movie_id);
-        CREATE INDEX ratings_by_month ON ratings(rating_month);
-    """)
+def validate_relations(ratings, movies, movie_genres, users=None, genres=None):
+    """Reject missing/duplicate keys and orphan references before an analysis merge.
+
+    Distinct movie IDs may share a title. Referential checks use IDs exclusively.
+    The returned fields are error counts, so a valid result contains only zeros.
+    """
+    key_frames = [(ratings, ["user_id", "movie_id"]), (movies, ["movie_id"]),
+                  (movie_genres, ["movie_id", "genre_id"])]
+    if users is not None:
+        key_frames.append((users, ["user_id"]))
+    if genres is not None:
+        key_frames.append((genres, ["genre_id"]))
+    checks = {
+        "missing_key_cells": int(sum(frame[keys].isna().sum().sum() for frame, keys in key_frames)),
+        "duplicate_rating_user_movie_pairs": int(ratings.duplicated(["user_id", "movie_id"]).sum()),
+        "duplicate_movie_ids": int(movies.movie_id.duplicated().sum()),
+        "duplicate_movie_genre_pairs": int(movie_genres.duplicated(["movie_id", "genre_id"]).sum()),
+        "orphan_rating_movie_ids": int((~ratings.movie_id.isin(movies.movie_id)).sum()),
+        "orphan_movie_genre_movie_ids": int((~movie_genres.movie_id.isin(movies.movie_id)).sum()),
+        "orphan_rating_user_ids": 0 if users is None else int((~ratings.user_id.isin(users.user_id)).sum()),
+        "duplicate_user_ids": 0 if users is None else int(users.user_id.duplicated().sum()),
+        "duplicate_genre_ids": 0 if genres is None else int(genres.genre_id.duplicated().sum()),
+        "orphan_movie_genre_genre_ids": 0 if genres is None else int((~movie_genres.genre_id.isin(genres.genre_id)).sum()),
+    }
+    errors = {name: count for name, count in checks.items() if count}
+    if errors:
+        raise ValueError(f"Invalid DataFrame relations: {errors}")
+    linked = ratings.merge(movies[["movie_id"]], on="movie_id", how="left",
+                           validate="many_to_one", indicator=True)
+    if len(linked) != len(ratings) or linked._merge.ne("both").any():
+        raise ValueError("The rating-to-movie relation did not preserve every rating")
+    return checks
 
 
-def prepare_database(data_dir=None):
-    """Verify the source archive, audit it and atomically create a local database."""
+def _expand_genres(ratings, movie_genres):
+    """Expand true labels and verify that the 1/k allocation preserves ratings."""
+    if ratings.empty or movie_genres.duplicated(["movie_id", "genre_id"]).any():
+        raise ValueError("Nonempty ratings and unique movie/genre memberships are required")
+    multiplicity = movie_genres.groupby("movie_id").size().rename("n_genres")
+    members = movie_genres.merge(multiplicity, on="movie_id", validate="many_to_one")
+    expanded = ratings.merge(members, on="movie_id", how="left",
+                             validate="many_to_many", indicator=True)
+    if expanded._merge.ne("both").any():
+        raise ValueError("Some rated movies do not have a genre membership")
+    expected_rows = int(ratings.movie_id.map(multiplicity).sum())
+    if len(expanded) != expected_rows:
+        raise ValueError("Unexpected row count in the multi-label expansion")
+    expanded["weight"] = 1.0 / expanded.n_genres
+    if not np.isclose(expanded.weight.sum(), len(ratings), rtol=1e-12, atol=1e-9):
+        raise ValueError("Genre allocation weights did not preserve rating count")
+    return expanded.drop(columns="_merge")
+
+
+def prepare_data(data_dir=None):
+    """Verify and audit the fixed source, returning clean in-memory DataFrames."""
     data_dir = Path(data_dir or PROJECT_ROOT / "data")
     ratings = load_ratings(data_dir)
     raw_movies, genres, users, flag_names = _read_metadata(data_dir / "ml-100k.zip")
@@ -119,17 +136,13 @@ def prepare_database(data_dir=None):
                    "movies_with_multiple_genres": int((movie_genre_counts > 1).sum()),
                    "movies_without_genre_flags": int((~movies.movie_id.isin(membership.movie_id)).sum()),
                    "unknown_genre_movies": int(membership.loc[membership.genre.eq("unknown"), "movie_id"].nunique())},
-        "integrity": {"orphan_rating_movie_ids": int((~ratings.movie_id.isin(movies.movie_id)).sum()),
-                      "orphan_rating_user_ids": int((~ratings.user_id.isin(users.user_id)).sum()),
-                      "duplicate_genre_ids": int(genres.genre_id.duplicated().sum()),
-                      "duplicate_user_ids": int(users.user_id.duplicated().sum()),
-                      "duplicate_movie_genre_pairs": int(membership.duplicated(["movie_id", "genre_id"]).sum())},
+        "integrity": validate_relations(ratings, movies, membership, users, genres),
         "cleaning_decisions": [
             "保留全部有效评分，1星和5星不是脏数据；不按评分高低删除记录。",
             "电影主键是movie_id，同名不同ID不盲目合并或删除。",
-            "发行日期缺失保留NULL；空的视频发行日期不用于业务指标，不补造日期。",
+            "发行日期缺失保留NaT；空的视频发行日期不用于业务指标，不补造日期。",
             "genre按源文件真实多标签保留，unknown不替换成其他类型。",
-            "数据库和行级中间表仅留在被Git忽略的data目录；对外只保存聚合结果。",
+            "原包仅留在被Git忽略的data目录；行级DataFrame只在内存中处理，对外只保存聚合结果。",
         ],
     }
     if any(audit["integrity"].values()) or audit["movies"]["duplicate_movie_ids"] or audit["movies"]["invalid_genre_flag_cells"]:
@@ -137,46 +150,116 @@ def prepare_database(data_dir=None):
     if audit["movies"]["movies_without_genre_flags"]:
         raise ValueError("Missing genre memberships prevent allocation-weight conservation")
     clean_ratings = ratings.copy()
-    clean_ratings["rated_at_utc"] = rating_time.dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+    clean_ratings["rated_at_utc"] = rating_time
     clean_ratings["rating_month"] = rating_time.dt.strftime("%Y-%m")
-    database = data_dir / "movielens_analyst.sqlite3"
-    temporary = data_dir / "movielens_analyst.building.sqlite3"
-    temporary.unlink(missing_ok=True)
-    try:
-        with closing(sqlite3.connect(temporary)) as connection:
-            _create_schema(connection)
-            # Raw snapshots remain local for traceability, separate from normalized tables.
-            ratings.to_sql("raw_ratings", connection, index=False)
-            raw_movies.to_sql("raw_movies", connection, index=False)
-            genres.to_sql("raw_genres", connection, index=False)
-            users.to_sql("users", connection, index=False, if_exists="append")
-            genres.to_sql("genres", connection, index=False, if_exists="append")
-            movies.to_sql("movies", connection, index=False, if_exists="append")
-            clean_ratings.to_sql("ratings", connection, index=False, if_exists="append")
-            membership.to_sql("movie_genres", connection, index=False, if_exists="append")
-            violations = connection.execute("PRAGMA foreign_key_check").fetchall()
-            if violations:
-                raise ValueError("SQLite foreign-key checks failed")
-            audit["integrity"]["sqlite_foreign_key_violations"] = len(violations)
-            audit["integrity"]["sqlite_foreign_keys_enabled_during_load"] = bool(connection.execute("PRAGMA foreign_keys").fetchone()[0])
-            audit["preservation"] = {
-                "clean_rating_rows": int(connection.execute("SELECT COUNT(*) FROM rating_clean").fetchone()[0]),
-                "clean_movie_rows": int(connection.execute("SELECT COUNT(*) FROM movies").fetchone()[0]),
-                "movie_genre_rows": int(len(membership)),
-                "rating_genre_join_rows": int(connection.execute("SELECT COUNT(*) FROM ratings JOIN movie_genres USING(movie_id)").fetchone()[0]),
-                "genre_weighted_rating_total": float(connection.execute("""
-                    SELECT SUM(1.0 / n_genres) FROM ratings
-                    JOIN movie_genres USING(movie_id)
-                    JOIN (SELECT movie_id, COUNT(*) AS n_genres FROM movie_genres GROUP BY movie_id) USING(movie_id)
-                """).fetchone()[0]),
-            }
-        assert audit["preservation"]["clean_rating_rows"] == len(ratings)
-        assert audit["preservation"]["clean_movie_rows"] == len(movies)
-        assert np.isclose(audit["preservation"]["genre_weighted_rating_total"], len(ratings))
-        temporary.replace(database)
-    finally:
-        temporary.unlink(missing_ok=True)
-    return database, audit
+    linked = clean_ratings.merge(movies[["movie_id"]], on="movie_id", how="left", validate="many_to_one")
+    expanded = _expand_genres(clean_ratings, membership)
+    audit["preservation"] = {
+        "clean_rating_rows": int(len(clean_ratings)), "clean_movie_rows": int(len(movies)),
+        "movie_genre_rows": int(len(membership)), "rating_movie_join_rows": int(len(linked)),
+        "rating_genre_join_rows": int(len(expanded)),
+        "genre_weighted_rating_total": float(expanded.weight.sum()),
+    }
+    return {"ratings": clean_ratings, "movies": movies, "movie_genres": membership,
+            "users": users, "genres": genres}, audit
+
+
+def analyze_monthly(ratings):
+    """Calendar-month rating activity; boundary months remain explicitly partial."""
+    if ratings.empty:
+        raise ValueError("Monthly analysis requires ratings")
+    frame = ratings.copy()
+    utc = pd.to_datetime(frame.timestamp, unit="s", utc=True)
+    frame["rating_month"] = utc.dt.strftime("%Y-%m")
+    frame["rating_day"] = utc.dt.floor("D")
+    monthly = frame.groupby("rating_month", as_index=False).agg(
+        rating_count=("rating", "size"), scoring_users=("user_id", "nunique"),
+        rated_movies=("movie_id", "nunique"), rating_mean=("rating", "mean"),
+        observed_day_count=("rating_day", "nunique"),
+    )
+    monthly["calendar_days"] = pd.to_datetime(monthly.rating_month + "-01").dt.days_in_month
+    monthly["is_partial_month"] = monthly.rating_month.isin(
+        [frame.rating_month.min(), frame.rating_month.max()]
+    ).astype(int)
+    monthly["day_normalized_ratings"] = (monthly.rating_count / monthly.calendar_days).where(monthly.is_partial_month.eq(0))
+    monthly["ratings_per_scoring_user"] = monthly.rating_count / monthly.scoring_users
+    return monthly[["rating_month", "rating_count", "scoring_users", "rated_movies", "rating_mean",
+                    "calendar_days", "observed_day_count", "is_partial_month", "day_normalized_ratings",
+                    "ratings_per_scoring_user"]].sort_values("rating_month").reset_index(drop=True)
+
+
+def _movie_counts(ratings, movies):
+    if ratings.empty or movies.empty or (~ratings.movie_id.isin(movies.movie_id)).any():
+        raise ValueError("Movie counts require a nonempty catalog covering every rating")
+    counts = ratings.groupby("movie_id").size().rename("n")
+    result = movies[["movie_id"]].merge(counts, on="movie_id", how="left", validate="one_to_one")
+    result["n"] = result.n.fillna(0).astype(int)
+    return result
+
+
+def analyze_concentration(ratings, movies):
+    counts = _movie_counts(ratings, movies).sort_values(["n", "movie_id"], ascending=[False, True], kind="stable")
+    n_movies, n_ratings = len(counts), int(counts.n.sum())
+    top10, top20 = int(np.ceil(n_movies * .10)), int(np.ceil(n_movies * .20))
+    head10, head20 = int(counts.head(top10).n.sum()), int(counts.head(top20).n.sum())
+    tail = counts[counts.n <= 20]
+    return pd.DataFrame([{
+        "movie_count": n_movies, "rating_count": n_ratings,
+        "top10_movie_count": top10, "top10_rating_count": head10, "top10_rating_share": head10 / n_ratings,
+        "top20_movie_count": top20, "top20_rating_count": head20, "top20_rating_share": head20 / n_ratings,
+        "longtail_movie_count": len(tail), "longtail_movie_share": len(tail) / n_movies,
+        "longtail_rating_count": int(tail.n.sum()), "longtail_rating_share": float(tail.n.sum()) / n_ratings,
+    }])
+
+
+def analyze_candidates(ratings, movies, min_ratings=30, prior_strength=50):
+    """Keep the count threshold and all deterministic tie rules visible."""
+    if ratings.empty or min_ratings < 1:
+        raise ValueError("Ratings and a positive minimum rating count are required")
+    if (~ratings.movie_id.isin(movies.movie_id)).any():
+        raise ValueError("Some rated movies are missing from the catalog")
+    stats = ratings.assign(high_rating=ratings.rating.ge(4).astype(float)).groupby("movie_id", as_index=False).agg(
+        rating_count=("rating", "size"), raw_mean=("rating", "mean"), high_rating_ratio=("high_rating", "mean"),
+    )
+    frame = stats[stats.rating_count >= min_ratings].merge(
+        movies[["movie_id", "title"]], on="movie_id", validate="many_to_one"
+    ).reset_index(drop=True)
+    frame["global_mean"] = float(ratings.rating.mean())
+    frame["prior_strength"] = float(prior_strength)
+    frame["shrunk_mean"] = shrink_mean(frame.raw_mean, frame.rating_count, float(ratings.rating.mean()), prior_strength)
+    for name, columns in [("rating_count_rank", ["rating_count", "movie_id"]),
+                          ("raw_mean_rank", ["raw_mean", "rating_count", "movie_id"]),
+                          ("shrunk_rank", ["shrunk_mean", "rating_count", "movie_id"])]:
+        ordered = frame.sort_values(columns, ascending=[False] * (len(columns) - 1) + [True], kind="stable")
+        frame[name] = pd.Series(np.arange(1, len(frame) + 1), index=ordered.index).reindex(frame.index).astype(int)
+    return frame[["movie_id", "title", "rating_count", "raw_mean", "high_rating_ratio", "global_mean",
+                  "prior_strength", "shrunk_mean", "rating_count_rank", "raw_mean_rank", "shrunk_rank"]].sort_values("shrunk_rank").reset_index(drop=True)
+
+
+def analyze_genres(ratings, movie_genres):
+    expanded = _expand_genres(ratings, movie_genres)
+    expanded["high_rating"] = expanded.rating.ge(4).astype(float)
+    expanded["weighted_rating"] = expanded.rating * expanded.weight
+    frame = expanded.groupby(["genre_id", "genre"], as_index=False).agg(
+        movie_count=("movie_id", "nunique"), scoring_users=("user_id", "nunique"),
+        rating_count=("rating", "size"), rating_mean=("rating", "mean"),
+        high_rating_ratio=("high_rating", "mean"), weighted_count=("weight", "sum"),
+        weighted_rating_sum=("weighted_rating", "sum"),
+    )
+    frame["weighted_rating_mean"] = frame.weighted_rating_sum / frame.weighted_count
+    frame["weighted_share"] = frame.weighted_count / len(ratings)
+    movie_means = ratings.groupby("movie_id").rating.mean().rename("movie_mean")
+    equal_movie = movie_genres.merge(movie_means, on="movie_id", validate="many_to_one").groupby("genre_id").movie_mean.mean().rename("equal_movie_weight_mean")
+    frame = frame.drop(columns="weighted_rating_sum").merge(equal_movie, on="genre_id", validate="one_to_one")
+    return frame.sort_values(["weighted_count", "genre_id"], ascending=[False, True], kind="stable").reset_index(drop=True)
+
+
+def analyze_sensitivity(ratings, movies, strengths=(20, 50, 100), min_ratings=30):
+    columns = ["prior_strength", "movie_id", "title", "rating_count", "raw_mean", "shrunk_mean", "shrunk_rank"]
+    frames = [analyze_candidates(ratings, movies, min_ratings, strength).head(20)[columns] for strength in strengths]
+    if not frames:
+        raise ValueError("At least one prior strength is required")
+    return pd.concat(frames, ignore_index=True).sort_values(["prior_strength", "shrunk_rank"]).reset_index(drop=True)
 
 
 def _records(frame):
@@ -184,7 +267,7 @@ def _records(frame):
     return json.loads(frame.to_json(orient="records"))
 
 
-def _figures(connection, tables, output):
+def _figures(source_tables, tables, output):
     # Set a headless backend here; importing analyst does not alter Notebook plotting.
     import matplotlib
     matplotlib.use("Agg")
@@ -216,13 +299,7 @@ def _figures(connection, tables, output):
     axes[1].tick_params(axis="x", rotation=30)
     save(fig, "monthly_activity")
 
-    histogram = pd.read_sql_query("""
-        SELECT n, COUNT(*) AS movies FROM (
-            SELECT m.movie_id, COUNT(r.movie_id) AS n FROM movies m LEFT JOIN ratings r USING(movie_id)
-            GROUP BY m.movie_id
-        ) GROUP BY n ORDER BY n
-    """, connection)
-    counts = np.repeat(histogram.n.to_numpy(), histogram.movies.to_numpy())
+    counts = np.sort(_movie_counts(source_tables["ratings"], source_tables["movies"]).n.to_numpy())
     x = np.arange(len(counts) + 1) / len(counts)
     y = np.r_[0, np.cumsum(counts) / counts.sum()]
     fig, ax = plt.subplots(figsize=(6.8, 5))
@@ -262,9 +339,9 @@ def _report(result, output):
              "## 数据与分析口径", "",
              "固定MovieLens 100K，分析范围为全部历史已记录评分；按UTC评分提交时间统计，不使用模型训练/验证/测试切分。"
              "首尾月份保守标为不完整月，月间比较使用1997-10至1998-03六个完整日历月。",
-             "电影主键为movie_id，同名不同ID不合并；发行日期缺失保留NULL，unknown类型按真实标记保留，1星和5星都不作为脏数据删除。"
+             "电影主键为movie_id，同名不同ID不合并；发行日期缺失保留NaT，unknown类型按真实标记保留，1星和5星都不作为脏数据删除。"
              "具体缺失、重复、孤儿外键与行数守恒检查见[audit.json](audit.json)。",
-             "原始档案、行级表和SQLite仅留在data目录；本报告和[metrics.json](metrics.json)发布聚合结果。", "",
+             "原始档案仅留在data目录；行级DataFrame在本地内存中处理，本报告和[metrics.json](metrics.json)发布聚合结果。", "",
              "## 问题一：完整月份的评分活动怎样变化？", "",
              "“评分用户”是当月至少提交一条评分的去重用户，不是平台注册用户、平台MAU或新增用户。"
              "日均以完整月的日历天数为分母，人均以当月去重评分用户为分母。", "",
@@ -335,63 +412,64 @@ def _report(result, output):
         "", "## 限制与复现", "",
         "用户和评分记录都存在选择偏差；1997–1998年的历史样本不能代表今天所有观众。没有曝光、观看或随机分配数据，描述性差异不能证明因果。"
         "先验强度敏感性也不涵盖抽样误差、异常评分机制或时期变化。",
-        "从项目目录运行`python -m rating_lab.analyst`可重建本报告；SQL位于[analysis.sql](../../sql/analysis.sql)。"
+        "从项目目录运行`python -m rating_lab.analyst`可重建本报告；纯Python分析实现位于[analyst.py](../../src/rating_lab/analyst.py)。"
         "完整聚合表见[metrics.json](metrics.json)，源数据审计见[audit.json](audit.json)。",
         f"固定原包SHA-256：`{result['source_sha256']}`。代码许可不覆盖MovieLens源数据，发布内容保持为聚合结果。",
-        "后续按[学习指南](../../docs/LEARNING_GUIDE.md)复核口径、执行SQL并写出自己的结论。", "",
+        "后续按[学习指南](../../docs/LEARNING_GUIDE.md)复核口径、运行Pandas分析并写出自己的结论。", "",
     ]
     (output / "ANALYSIS_REPORT.md").write_text("\n".join(lines), encoding="utf-8")
 
 
 def run_analysis(data_dir=None, output_dir=None):
-    """Run the SQL case and write aggregate-only JSON, figures and a short report."""
-    database, audit = prepare_database(data_dir)
+    """Run the DataFrame analysis and publish only aggregate JSON and figures."""
+    source_tables, audit = prepare_data(data_dir)
     output = Path(output_dir or PROJECT_ROOT / "reports" / "analyst")
     output.mkdir(parents=True, exist_ok=True)
-    with closing(sqlite3.connect(database)) as connection:
-        connection.execute("PRAGMA foreign_keys = ON")
-        tables = {name: pd.read_sql_query(query, connection) for name, query in load_queries().items()}
-        assert set(tables) == {"monthly", "concentration", "movie_candidates", "genre", "sensitivity"}
-        assert np.isclose(tables["genre"].weighted_count.sum(), connection.execute("SELECT COUNT(*) FROM ratings").fetchone()[0])
-        assert np.isclose(tables["genre"].weighted_share.sum(), 1.0)
-        sensitive = tables["sensitivity"]
-        sets = {int(value): set(rows.movie_id) for value, rows in sensitive.groupby("prior_strength")}
-        pairwise = [{"left_m": left, "right_m": right, "shared_movies": len(sets[left] & sets[right]),
-                     "jaccard": len(sets[left] & sets[right]) / len(sets[left] | sets[right])}
-                    for left, right in itertools.combinations(sorted(sets), 2)]
-        result = {
-            "dataset": "MovieLens 100K", "source_sha256": SOURCE_SHA256,
-            "audit_summary": {"rating_count": audit["ratings"]["rows"], "movie_count": audit["movies"]["rows"],
-                              "scoring_users": audit["ratings"]["unique_users"], "global_mean": audit["ratings"]["global_mean"],
-                              "candidate_movies_n_ge_30": len(tables["movie_candidates"]),
-                              "rating_genre_join_rows": audit["preservation"]["rating_genre_join_rows"]},
-            "monthly": _records(tables["monthly"]),
-            "concentration": _records(tables["concentration"])[0],
-            "movie_candidates": _records(tables["movie_candidates"].head(30)),
-            "genre": _records(tables["genre"]),
-            "sensitivity": {"top20_rankings": _records(sensitive), "pairwise_top20_overlap": pairwise},
-            "definitions": {
-                "scope": "全部100000条历史已记录评分；不使用建模的train/validation/test分区。",
-                "monthly": "UTC评分提交月；首尾月保守标partial；日均只用于完整月；人均分母是月去重评分用户。",
-                "concentration": "全1682部目录电影按评分数降序、movie_id升序，Top10/20%部数向上取整；长尾为≤20条评分。",
-                "candidates": "n≥30，C=全样本评分均值，收缩分=(n*raw_mean+m*C)/(n+m)；主表m=50，敏感性20/50/100；不声称最优。",
-                "genre": "普通计数跨标签重复；weighted_count为每条评分按真实类型数k分摊1/k；等电影均分先算电影均分再按电影等权；独立用户不可跨类型加总。",
-            },
-            "limitations": ["评分为选择性提交而非曝光/观看样本；不能将评分活动当作播放量或市场份额。",
-                            "1997–1998历史样本，用户筛选和记录方式限制外推。",
-                            "月均分、类型均分、电影片单都是描述性结果，不能证明因果或线上提升。"],
-        }
-        _figures(connection, tables, output)
+    ratings, movies, membership = (source_tables[name] for name in ["ratings", "movies", "movie_genres"])
+    tables = {
+        "monthly": analyze_monthly(ratings), "concentration": analyze_concentration(ratings, movies),
+        "movie_candidates": analyze_candidates(ratings, movies), "genre": analyze_genres(ratings, membership),
+        "sensitivity": analyze_sensitivity(ratings, movies),
+    }
+    assert np.isclose(tables["genre"].weighted_count.sum(), len(ratings))
+    assert np.isclose(tables["genre"].weighted_share.sum(), 1.0)
+    sensitive = tables["sensitivity"]
+    sets = {int(value): set(rows.movie_id) for value, rows in sensitive.groupby("prior_strength")}
+    pairwise = [{"left_m": left, "right_m": right, "shared_movies": len(sets[left] & sets[right]),
+                 "jaccard": len(sets[left] & sets[right]) / len(sets[left] | sets[right])}
+                for left, right in itertools.combinations(sorted(sets), 2)]
+    result = {
+        "dataset": "MovieLens 100K", "source_sha256": SOURCE_SHA256,
+        "audit_summary": {"rating_count": audit["ratings"]["rows"], "movie_count": audit["movies"]["rows"],
+                          "scoring_users": audit["ratings"]["unique_users"], "global_mean": audit["ratings"]["global_mean"],
+                          "candidate_movies_n_ge_30": len(tables["movie_candidates"]),
+                          "rating_genre_join_rows": audit["preservation"]["rating_genre_join_rows"]},
+        "monthly": _records(tables["monthly"]),
+        "concentration": _records(tables["concentration"])[0],
+        "movie_candidates": _records(tables["movie_candidates"].head(30)),
+        "genre": _records(tables["genre"]),
+        "sensitivity": {"top20_rankings": _records(sensitive), "pairwise_top20_overlap": pairwise},
+        "definitions": {
+            "scope": "全部100000条历史已记录评分；不使用建模的train/validation/test分区。",
+            "monthly": "UTC评分提交月；首尾月保守标partial；日均只用于完整月；人均分母是月去重评分用户。",
+            "concentration": "全1682部目录电影按评分数降序、movie_id升序，Top10/20%部数向上取整；长尾为≤20条评分。",
+            "candidates": "n≥30，C=全样本评分均值，收缩分=(n*raw_mean+m*C)/(n+m)；主表m=50，敏感性20/50/100；不声称最优。",
+            "genre": "普通计数跨标签重复；weighted_count为每条评分按真实类型数k分摊1/k；等电影均分先算电影均分再按电影等权；独立用户不可跨类型加总。",
+        },
+        "limitations": ["评分为选择性提交而非曝光/观看样本；不能将评分活动当作播放量或市场份额。",
+                        "1997–1998历史样本，用户筛选和记录方式限制外推。",
+                        "月均分、类型均分、电影片单都是描述性结果，不能证明因果或线上提升。"],
+    }
+    _figures(source_tables, tables, output)
     (output / "audit.json").write_text(json.dumps(audit, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     (output / "metrics.json").write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     _report(result, output)
     print(f"Report: {output / 'ANALYSIS_REPORT.md'}")
-    print(f"Database (local only): {database}")
     return result
 
 
 def main():
-    parser = argparse.ArgumentParser(description="SQL-first MovieLens analyst case")
+    parser = argparse.ArgumentParser(description="Pure-Python MovieLens analyst case")
     parser.add_argument("--data-dir", type=Path)
     parser.add_argument("--output-dir", type=Path)
     args = parser.parse_args()

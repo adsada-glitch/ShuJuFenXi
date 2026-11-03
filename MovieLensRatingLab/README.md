@@ -1,12 +1,12 @@
 # MovieLens 数据分析：内容评分与候选片单
 
-一个面向数据分析求职的公开数据案例：**从数据来源、处理和 SQL 指标，到 Python 图表、结果解释与建议。**
+一个面向数据分析求职的纯 Python 案例：**用 pandas 从原始数据读取、清洗和指标计算，做到图表、结论与建议。**
 
 ## 学习入口
 
 **[完整数据分析过程](docs/LEARNING_GUIDE.md)**
 
-适合已经有 Python、SQL 基础的人。教程围绕四个问题，逐一解释为什么用这种方法、怎样计算、实际结果是什么，以及能支持什么建议：
+从 [配套 Notebook](notebooks/01_explore.ipynb) 打开即可逐格运行，代码已按完整顺序放好。教程围绕四个问题，逐一解释为什么用这种方法、怎样计算、实际结果是什么，以及能支持什么建议：
 
 1. 月度评分参与怎样变化：完整月比较、人数与人均量分解。
 2. 评分是否集中在少数影片：聚合、窗口排名与累计占比。
@@ -33,14 +33,13 @@
 ```text
 docs/LEARNING_GUIDE.md      # 唯一的主线教材：问题→方法→结果→建议
 notebooks/01_explore.ipynb  # 个人执行代码和写观察的工作区
-sql/analysis.sql           # 五段可独立执行的命名 SQL（SQLite 方言）
-src/rating_lab/analyst.py  # 源数据核验、清洗入库、SQL和聚合报告
+src/rating_lab/analyst.py  # 源数据核验、DataFrame清洗、聚合与报告
 reports/analyst/           # 自动参考结果
 reports/analyst_learning/  # 你按教程运行后保存的聚合证据和图
 tests/                    # 数据关联、收缩与原有模型边界测试
 ```
 
-Python 自带 SQLite，便于复现 SQL；已有 MySQL/SQL Server 的读者可按相同口径迁移日期等方言。整条参考流程可运行 `python -m rating_lab.analyst`；教程同时给出逐项操作与独立核对方式。直接依赖见 `pyproject.toml`，缺包时使用 `python -m pip install -e .`。
+全部分析使用 pandas 的 `merge`、`melt`、`groupby`、`agg`、`sort_values` 和 `cumsum`，图表使用 matplotlib。逐步学习请打开 Notebook；整条参考流程可运行 `python -m rating_lab.analyst`。直接依赖见 `pyproject.toml`，缺包时使用 `python -m pip install -e .`。
 
 原有评分预测代码及其基线报告保留为可选技术扩展，不属于这次岗位案例的学习主线。
 

@@ -29,26 +29,30 @@
     "unknown_genre_movies": 2
   },
   "integrity": {
-    "orphan_rating_movie_ids": 0,
-    "orphan_rating_user_ids": 0,
-    "duplicate_genre_ids": 0,
-    "duplicate_user_ids": 0,
+    "missing_key_cells": 0,
+    "duplicate_rating_user_movie_pairs": 0,
+    "duplicate_movie_ids": 0,
     "duplicate_movie_genre_pairs": 0,
-    "sqlite_foreign_key_violations": 0,
-    "sqlite_foreign_keys_enabled_during_load": true
+    "orphan_rating_movie_ids": 0,
+    "orphan_movie_genre_movie_ids": 0,
+    "orphan_rating_user_ids": 0,
+    "duplicate_user_ids": 0,
+    "duplicate_genre_ids": 0,
+    "orphan_movie_genre_genre_ids": 0
   },
   "cleaning_decisions": [
     "保留全部有效评分，1星和5星不是脏数据；不按评分高低删除记录。",
     "电影主键是movie_id，同名不同ID不盲目合并或删除。",
-    "发行日期缺失保留NULL；空的视频发行日期不用于业务指标，不补造日期。",
+    "发行日期缺失保留NaT；空的视频发行日期不用于业务指标，不补造日期。",
     "genre按源文件真实多标签保留，unknown不替换成其他类型。",
-    "数据库和行级中间表仅留在被Git忽略的data目录；对外只保存聚合结果。"
+    "原包仅留在被Git忽略的data目录；行级DataFrame只在内存中处理，对外只保存聚合结果。"
   ],
   "preservation": {
     "clean_rating_rows": 100000,
     "clean_movie_rows": 1682,
     "movie_genre_rows": 2893,
+    "rating_movie_join_rows": 100000,
     "rating_genre_join_rows": 212595,
-    "genre_weighted_rating_total": 100000.0
+    "genre_weighted_rating_total": 99999.99999999999
   }
 }
